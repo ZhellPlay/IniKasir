@@ -1,0 +1,18 @@
+{
+  "name": "Ini Kasir",
+  "short_name": "Ini Kasir",
+  "description": "Sistem Kasir dengan manajemen stok, bahan baku, resep, dan laporan",
+  "start_url": "index.html",
+  "id": ".",
+  "display": "standalone",
+  "background_color": "#0a7a5f",
+  "theme_color": "#0a7a5f",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

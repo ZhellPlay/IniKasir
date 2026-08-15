@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a7a5f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="INI KASIR">
+  <meta name="description"
+    content="Sistem Kasir Modern dengan Manajemen Stok, Resep, Pengeluaran, dan Laporan">
+  <title>INI KASIR</title>
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="logo.png" type="image/png">
+  <link rel="apple-touch-icon" href="logo.png">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style-upgrade.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+</head>
+
+<body>
+  <div id="app"></div>
+  <div id="modal-container"></div>
+  <div id="toast-container"></div>
+  <div id="print-notifications"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-analytics-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAGG2vAzA5pifcUlgUyeMAj1ah9spUlLlc",
+      authDomain: "inikasir-d4eaa.firebaseapp.com",
+      projectId: "inikasir-d4eaa",
+      storageBucket: "inikasir-d4eaa.firebasestorage.app",
+      messagingSenderId: "570022956201",
+      appId: "1:570022956201:web:91c70322572b96950eedb8",
+      measurementId: "G-FKJQYJFTNM"
+    };
+    firebase.initializeApp(firebaseConfig);
+    firebase.analytics();
+    window.dbCloud = firebase.firestore();
+    dbCloud.enablePersistence({ synchronizeTabs: true }).catch(err => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Persistence failed: Multiple tabs');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Persistence failed: Browser no support');
+      }
+    });
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js" defer></script>
+
+  <script src="js/init.js" defer></script>
+  <script src="js/utils.js" defer></script>
+  <script src="js/layout.js" defer></script>
+  <script src="js/sortableTable.js" defer></script>
+  <script src="js/state.js" defer></script>
+  <script src="js/realtime.js" defer></script>
+  <script src="js/printer.js" defer></script>
+  <script src="js/auth.js" defer></script>
+  <script src="js/pengeluaran.js" defer></script>
+  <script src="js/kasir.js" defer></script>
+  <script src="js/history.js" defer></script>
+  <script src="js/menuManager.js" defer></script>
+  <script src="js/bahanManager.js" defer></script>
+  <script src="js/modifierManager.js" defer></script>
+  <script src="js/laporan.js" defer></script>
+  <script src="js/settings.js" defer></script>
+
+</body>
+
+</html>
