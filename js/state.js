@@ -58,13 +58,10 @@ function createState(initialState) {
                 'transactions','selectedHistory','selectedMenus',
                 'modifierGroups','openBills','activeMobileTab'
             ].includes(property);
-            if (!_isRendering && shouldRender) {
-                _isRendering = true;
-                requestAnimationFrame(() => {
-                    window.safeRender();
-                    _isRendering = false;
-                });
-            }
+            if (!shouldRender) return true;
+            requestAnimationFrame(() => {
+                window.safeRender();
+            });
             return true;
         }
     };
