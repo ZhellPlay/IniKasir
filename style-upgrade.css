@@ -1979,7 +1979,7 @@
     font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s ease !important;
-    border-radius: 4px !important;
+    border-radius: 0 !important;
   }
 
   .dark .pos-mobile-tab-btn {
