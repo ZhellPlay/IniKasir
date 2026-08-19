@@ -61,7 +61,6 @@
   color: #fff;
 }
 
-
 .modal, .modal-sm, .modal-lg, .modal-wide, .modal-crop-small, .pengeluaran-modal, .modal-menu-detail, .modal-detail-trx, .swal2-popup:not(.swal2-toast) {
   height: 85vh !important;
   max-height: 85vh !important;
@@ -77,33 +76,26 @@
   overflow-y: auto !important;
 }
 
-
-
-
 .modal, .modal-lg, .modal-wide, .modal-crop-small, .pengeluaran-modal, .modal-menu-detail, .modal-detail-trx, .swal2-popup.swal2-is-modal {
   width: 95vw !important;
   max-width: 760px !important;
 }
-
 
 .swal2-popup.swal2-is-medium {
   width: 95vw !important;
   max-width: 520px !important;
 }
 
-
 .modal-sm, .swal2-popup.swal2-is-konfirmasi {
   width: 95vw !important;
   max-width: 420px !important;
 }
-
 
 .swal2-container.swal2-backdrop-show {
   backdrop-filter: blur(3px) !important;
   -webkit-backdrop-filter: blur(3px) !important;
   background: rgba(0, 0, 0, 0.5) !important;
 }
-
 
 .badge-success {
   background: var(--success);
@@ -1865,8 +1857,6 @@
   height: 100% !important;
 }
  
- 
-
 .alert-content-wrapper { text-align:left; font-size:0.85rem; }
 .alert-title-label { margin-bottom:8px; }
 .alert-list { margin:0 0 10px 16px; }
@@ -2356,8 +2346,6 @@
   }
 }
 
-/* Empty-state rows ("Belum ada...", "Tidak ada...") use colspan and have
-   no data-label - keep them as plain centered text, not a label:value row */
 @media (max-width: 768px) {
   .settings-table td[colspan],
   .table-full td[colspan] {
