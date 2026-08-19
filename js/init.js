@@ -1,4 +1,3 @@
-// Nama aplikasi permanen (beda dari nama toko di Pengaturan) - ubah di sini, otomatis update ke login, sidebar & judul tab.
 window.APP_NAME = "INI KASIR";
 document.title = window.APP_NAME;
 const _appTitleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
