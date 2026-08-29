@@ -243,7 +243,10 @@ function renderMenuManager() {
                   <button class="btn-icon-sm btn-icon-danger" onclick="const b=this;Utils.setButtonLoading(b,true);deleteCategory('${c.id}').finally(()=>Utils.setButtonLoading(b,false))" title="Hapus">
                     <i class="fas fa-trash"></i>
                   </button>
-                ` : ''}
+                ` : `
+                  <span class="category-action-placeholder" aria-hidden="true"></span>
+                  <span class="category-action-placeholder" aria-hidden="true"></span>
+                `}
               </div>
             </div>
           `).join('')}
@@ -262,7 +265,7 @@ function renderMenuManager() {
 }
 
 async function showAddCategoryModal() {
-  const name = await Utils.showPrompt('Nama Kategori Baru', '', 'swal2-is-medium');
+  const name = await Utils.showPrompt('Nama Kategori Baru', '', 'swal2-is-konfirmasi');
   if (!name) return;
   try {
     await dbCloud.collection("categories").add({
@@ -272,14 +275,14 @@ async function showAddCategoryModal() {
     });
     Utils.showToast("Kategori ditambahkan");
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
 async function editCategory(id) {
   const category = state.categories.find(c => c.id === id);
   if (!category) return;
-  const newName = await Utils.showPrompt('Edit Nama Kategori', category.name, 'swal2-is-medium');
+  const newName = await Utils.showPrompt('Edit Nama Kategori', category.name, 'swal2-is-konfirmasi');
   if (!newName || newName === category.name) return;
   try {
     await dbCloud.collection("categories").doc(id).update({
@@ -288,7 +291,7 @@ async function editCategory(id) {
     });
     Utils.showToast("Kategori berhasil diupdate");
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -302,7 +305,7 @@ async function deleteCategory(id) {
     await dbCloud.collection("categories").doc(id).delete();
     Utils.showToast("Kategori dihapus");
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -352,8 +355,9 @@ function openCategory(id) {
             <th class="td-base text-left cursor-pointer" onclick="sortMenus('name')">
               Nama <i class="fas ${SortableTable.getSortIcon('menus', 'name')}"></i>
             </th>
+            <th class="td-base text-left">Harga Modal</th>
             <th class="td-base text-left cursor-pointer" onclick="sortMenus('price')">
-              Harga <i class="fas ${SortableTable.getSortIcon('menus', 'price')}"></i>
+              Harga Jual <i class="fas ${SortableTable.getSortIcon('menus', 'price')}"></i>
             </th>
             <th class="td-base text-left">Stok</th>
             <th class="td-base text-left">Aksi</th>
@@ -410,7 +414,7 @@ function _renderCatActionsHTML(categoryId, filteredMenus) {
 
 function _renderCatTableBodyHTML(sortedMenus) {
   if (sortedMenus.length === 0) {
-    return '<tr><td colspan="6" class="td-base text-center text-muted">Tidak ada menu ditemukan</td></tr>';
+    return '<tr><td colspan="7" class="td-base text-center text-muted">Tidak ada menu ditemukan</td></tr>';
   }
   return sortedMenus.map(m => {
     const isSelected = state.selectedMenus.has(m.id);
@@ -427,7 +431,8 @@ function _renderCatTableBodyHTML(sortedMenus) {
           }
         </td>
         <td class="td-base td-medium" data-label="Nama">${m.name}</td>
-        <td class="td-base" data-label="Harga">Rp ${Utils.formatRupiah(m.price)}</td>
+        <td class="td-base" data-label="Harga Modal">Rp ${Utils.formatRupiah(m.costPrice || 0)}</td>
+        <td class="td-base" data-label="Harga Jual">Rp ${Utils.formatRupiah(m.salePrice ?? m.price ?? 0)}</td>
         <td class="td-base" data-label="Stok">
           ${m.resep ?
             `<span class="text-base-sm"><i class="fas fa-cubes"></i> ${stokOtomatis} porsi</span>` :
@@ -468,15 +473,28 @@ async function showAddMenuModal(categoryId) {
   modal.className = 'modal-overlay';
   modal.id = 'add-menu-modal';
   modal.innerHTML = `
-    <div class="modal modal-lg">
-      <h3><i class="fas fa-plus-circle"></i> Tambah Menu</h3>
+    <div class="modal modal-lg modal-top-actions">
+      <div class="modal-header">
+        <h3><i class="fas fa-plus-circle"></i> Tambah Menu</h3>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeAddMenuModal()">Batal</button>
+          <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveNewMenu('${categoryId}').finally(()=>Utils.setButtonLoading(b,false))"><i class="fas fa-save"></i> Simpan</button>
+        </div>
+      </div>
       <div class="form-group">
         <label class="form-label">Nama Menu <span class="text-danger">*</span></label>
         <input type="text" id="menuName" class="form-input" placeholder="Contoh: Ice Tea" autocomplete="off">
       </div>
-      <div class="form-group">
-        <label class="form-label">Harga (Rp) <span class="text-danger">*</span></label>
-        <input type="number" id="menuPrice" class="form-input" placeholder="15000" min="0">
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Harga Modal (Rp)</label>
+          <input type="number" id="menuCostPrice" class="form-input" placeholder="10000" min="0">
+          <small class="text-muted">Untuk menghitung HPP & laba kotor.</small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Harga Jual (Rp) <span class="text-danger">*</span></label>
+          <input type="number" id="menuPrice" class="form-input" placeholder="15000" min="0">
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Foto Produk <span class="text-muted">(opsional)</span></label>
@@ -513,22 +531,17 @@ async function showAddMenuModal(categoryId) {
             </select>
             <input type="number" class="recipe-input" id="qty-0" placeholder="Jumlah" min="0" step="0.1" value="1">
             <span class="recipe-unit" id="unit-0">pcs</span>
-            <button type="button" class="recipe-remove" onclick="removeRecipeRow(0)"<>×</button>
+            <button type="button" class="recipe-remove" onclick="removeRecipeRow(0)">×</button>
           </div>
         </div>
         <button type="button" class="recipe-add" onclick="addRecipeRow()">
           <i class="fas fa-plus"></i> Tambah Bahan
         </button>
       </div>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeAddMenuModal()">Batal</button>
-        <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveNewMenu('${categoryId}').finally(()=>Utils.setButtonLoading(b,false))">
-          <i class="fas fa-save"></i> Simpan
-        </button>
-      </div>
     </div>
   `;
   document.body.appendChild(modal);
+  Utils.pinModalActions(modal);
   const useStockCheck = document.getElementById('useStock');
   if (useStockCheck) {
     useStockCheck.addEventListener('change', function (e) {
@@ -600,6 +613,7 @@ async function showAddMenuModal(categoryId) {
         return;
       }
       const price = parseInt(priceInput.value);
+      const costPrice = Math.max(0, parseInt(document.getElementById('menuCostPrice')?.value) || 0);
       if (isNaN(price) || price <= 0) {
         Utils.showToast("Harga harus diisi dengan angka yang valid!", 'error');
         priceInput.focus();
@@ -633,6 +647,8 @@ async function showAddMenuModal(categoryId) {
       const menuData = {
         name: name,
         price: price,
+        salePrice: price,
+        costPrice: costPrice,
         categoryId: catId,
         useStock: useStock,
         stock: stock,
@@ -649,7 +665,7 @@ async function showAddMenuModal(categoryId) {
       if (error.code === 'permission-denied') {
         Utils.showToast("Tidak punya izin. Periksa Firestore Rules", 'error');
       } else {
-        Utils.showToast("Gagal: " + error.message, 'error');
+        Utils.showToast(Utils.getFriendlyError(error), 'error');
       }
     }
   };
@@ -673,20 +689,42 @@ async function editMenu(id) {
   const bahanOptions = state.rawMaterials.map(b =>
     `<option value="${b.id}" data-satuan="${b.satuan || 'pcs'}">${b.name} (${b.satuan || 'pcs'})</option>`
   ).join('');
+  const categoryOptions = state.categories.map(category =>
+    `<option value="${category.id}" ${category.id === menu.categoryId ? 'selected' : ''}>${category.name}</option>`
+  ).join('');
   const modal = document.createElement('div');
   modal.id = 'custom-edit-modal';
   modal.className = 'modal-overlay';
   modal.innerHTML = `
-    <div class="modal modal-lg modal-menu-detail">
+    <div class="modal modal-lg modal-menu-detail modal-top-actions">
+      <div class="modal-header">
+        <h3><i class="fas fa-edit"></i> Edit Menu</h3>
+        <div class="modal-menu-footer">
+          <button class="btn btn-secondary" onclick="closeEditModal()">Batal</button>
+          <button class="btn btn-primary" onclick="saveEditMenu('${id}')"><i class="fas fa-save"></i> Simpan</button>
+        </div>
+      </div>
       <div class="modal-menu-detail-body">
-        <h3><i class="fas fa-edit"></i> Edit ${menu.name}</h3>
         <div class="form-group">
           <label class="form-label">Nama Menu</label>
           <input type="text" id="editName" class="form-input" value="${menu.name}">
         </div>
-        <div class="form-group">
-          <label class="form-label">Harga (Rp)</label>
-          <input type="number" id="editPrice" class="form-input" value="${menu.price}">
+        <div class="form-group edit-menu-category">
+          <label class="form-label">Kategori</label>
+          <select id="editCategoryId" class="form-select">
+            ${categoryOptions}
+          </select>
+        </div>
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label">Harga Modal (Rp)</label>
+            <input type="number" id="editCostPrice" class="form-input" value="${menu.costPrice || menu.hargaModal || 0}" min="0">
+            <small class="text-muted">Untuk HPP & laba kotor.</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Harga Jual (Rp)</label>
+            <input type="number" id="editPrice" class="form-input" value="${menu.salePrice ?? menu.price ?? 0}" min="0">
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Foto Produk <span class="text-muted">(opsional)</span></label>
@@ -751,16 +789,12 @@ async function editMenu(id) {
             <i class="fas fa-plus"></i> Tambah Bahan
           </button>
         </div>
-        <div class="modal-menu-footer">
-          <button class="btn btn-secondary" onclick="closeEditModal()">Batal</button>
-          <button class="btn btn-primary" onclick="saveEditMenu('${id}')">
-            <i class="fas fa-save"></i> Simpan
-          </button>
-        </div>
+
       </div>
     </div>
   `;
   document.body.appendChild(modal);
+  Utils.pinModalActions(modal);
   document.getElementById('editUseStock')?.addEventListener('change', function (e) {
     const stockField = document.getElementById('editStockField');
     if (stockField) {
@@ -844,6 +878,7 @@ window.removeEditRecipeRow = function (index) {
 window.saveEditMenu = async function (id) {
   const nameInput = document.getElementById('editName');
   const priceInput = document.getElementById('editPrice');
+  const categoryInput = document.getElementById('editCategoryId');
   const useStockInput = document.getElementById('editUseStock');
   const stockInput = document.getElementById('editStock');
   if (!nameInput || !priceInput) {
@@ -852,6 +887,8 @@ window.saveEditMenu = async function (id) {
   }
   const name = nameInput.value.trim();
   const price = parseInt(priceInput.value);
+  const categoryId = categoryInput?.value || '';
+  const costPrice = Math.max(0, parseInt(document.getElementById('editCostPrice')?.value) || 0);
   const useStock = useStockInput ? useStockInput.checked : false;
   const stock = useStock && stockInput ? parseInt(stockInput.value) || 0 : 0;
   if (!name) {
@@ -862,6 +899,11 @@ window.saveEditMenu = async function (id) {
   if (!price || price <= 0) {
     Utils.showToast("Harga harus diisi dengan valid", 'error');
     priceInput.focus();
+    return;
+  }
+  if (!categoryId || !state.categories.some(category => category.id === categoryId)) {
+    Utils.showToast("Kategori menu harus dipilih", 'error');
+    categoryInput?.focus();
     return;
   }
   const resep = [];
@@ -896,6 +938,9 @@ window.saveEditMenu = async function (id) {
     const updateData = {
       name,
       price,
+      salePrice: price,
+      costPrice,
+      categoryId,
       useStock,
       stock,
       resep: resep.length ? resep : null,
@@ -905,9 +950,11 @@ window.saveEditMenu = async function (id) {
     await dbCloud.collection("menus").doc(id).update(updateData);
     Utils.showToast("Menu berhasil diupdate");
     closeEditModal();
-    openCategory(state.currentCategoryId);
+    state.currentCategoryId = categoryId;
+    state.selectedMenus.clear();
+    openCategory(categoryId);
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 };
 
@@ -918,7 +965,7 @@ async function deleteMenu(id) {
     Utils.showToast("Menu dihapus");
     openCategory(state.currentCategoryId);
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -945,7 +992,7 @@ async function deleteSelectedMenus(categoryId) {
     Utils.showToast(`${jumlah} menu dihapus`);
     openCategory(categoryId);
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 

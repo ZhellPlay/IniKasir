@@ -25,7 +25,7 @@ async function connectPrinter() {
         updatePrinterStatus(true);
         return true;
     } catch (e) {
-        Utils.showToast("Gagal connect printer: " + e.message, "error");
+        Utils.showToast('Gagal menghubungkan printer. Periksa izin Bluetooth dan pastikan printer siap.', 'error');
         return false;
     }
 }
@@ -138,6 +138,11 @@ async function printStruk(trx) {
             }
         });
         bytes.push(...encoder.encode("================================\n"));
+        if ((trx.discountAmount || 0) > 0) {
+            const diskonLabel = trx.discountType === 'percent' ? `DISKON (${trx.discountValue}%)` : 'DISKON';
+            const diskonSpacing = 32 - diskonLabel.length - Utils.formatRupiah(trx.discountAmount).length - 1;
+            bytes.push(...encoder.encode(diskonLabel + ' '.repeat(Math.max(1, diskonSpacing)) + '-' + Utils.formatRupiah(trx.discountAmount) + "\n"));
+        }
         const totalLine = "TOTAL";
         const bayarLine = "BAYAR";
         const kembaliLine = "KEMBALI";
@@ -178,7 +183,7 @@ async function printStruk(trx) {
         isPrinting = false;
         return true;
     } catch (error) {
-        Utils.showToast("Gagal mencetak: " + error.message, "error");
+        Utils.showToast(Utils.getFriendlyError(error, 'Gagal mencetak struk. Periksa koneksi printer lalu coba lagi.'), 'error');
         isPrinting = false;
         return false;
     }
@@ -219,7 +224,13 @@ async function printRekapSesi(session, transactions) {
         bytes.push(...encoder.encode("RINGKASAN:\n"));
         bytes.push(...encoder.encode("Transaksi: " + transactions.length + "x\n"));
         const totalPenjualan = transactions.reduce((sum, t) => sum + t.total, 0);
+        const totalDiskon = transactions.reduce((sum, t) => sum + (t.discountAmount || 0), 0);
+        const totalHPP = transactions.reduce((sum, t) => sum + (t.items || []).reduce((x, i) => x + (Number(i.costPrice || 0) * (i.qty || 0)), 0), 0);
+        const labaKotor = totalPenjualan - totalHPP;
         bytes.push(...encoder.encode("Total: Rp " + Utils.formatRupiah(totalPenjualan) + "\n"));
+        bytes.push(...encoder.encode("Diskon: Rp " + Utils.formatRupiah(totalDiskon) + "\n"));
+        bytes.push(...encoder.encode("HPP: Rp " + Utils.formatRupiah(totalHPP) + "\n"));
+        bytes.push(...encoder.encode("Laba Kotor: Rp " + Utils.formatRupiah(labaKotor) + "\n"));
         const totalCash = transactions.reduce((sum, t) => {
             const qris = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
             return sum + (t.metodeBayar === 'tunai' ? (t.total || 0) : Math.max(0, (t.total || 0) - qris));
@@ -230,6 +241,15 @@ async function printRekapSesi(session, transactions) {
         }, 0);
         bytes.push(...encoder.encode("Cash: Rp " + Utils.formatRupiah(totalCash) + "\n"));
         bytes.push(...encoder.encode("QRIS: Rp " + Utils.formatRupiah(totalQRIS) + "\n"));
+        const pengeluaranSesi = state.pengeluaran?.filter(p => p.sessionId === session.id) || [];
+        const totalPengeluaran = pengeluaranSesi.reduce((sum, p) => sum + (Number(p.nominal) || 0), 0);
+        const modalAwal = Number(session.modalAwal || 0);
+        const kasBersih = totalCash - totalPengeluaran;
+        const uangDiLaci = modalAwal + kasBersih;
+        bytes.push(...encoder.encode("Pengeluaran: Rp " + Utils.formatRupiah(totalPengeluaran) + "\n"));
+        bytes.push(...encoder.encode("Kas Bersih: Rp " + Utils.formatRupiah(kasBersih) + "\n"));
+        bytes.push(...encoder.encode("Modal Awal: Rp " + Utils.formatRupiah(modalAwal) + "\n"));
+        bytes.push(...encoder.encode("Kas Seharusnya: Rp " + Utils.formatRupiah(uangDiLaci) + "\n"));
         bytes.push(...encoder.encode("================================\n"));
         bytes.push(...encoder.encode("PRODUK TERJUAL:\n"));
         const recap = {};
@@ -248,7 +268,7 @@ async function printRekapSesi(session, transactions) {
         Utils.showToast("Rekap shift dicetak", "success");
         isPrinting = false;
     } catch (error) {
-        Utils.showToast("Gagal cetak rekap: " + error.message, "error");
+        Utils.showToast(Utils.getFriendlyError(error, 'Gagal mencetak rekap. Periksa koneksi printer lalu coba lagi.'), 'error');
         isPrinting = false;
     }
 }
@@ -310,7 +330,7 @@ async function connectAndPrintFromDialog(trxId) {
             if (trx) await printStruk(trx);
         }
     } catch (error) {
-        Utils.showToast('Gagal connect printer: ' + error.message, 'error');
+        Utils.showToast(Utils.getFriendlyError(error, 'Gagal menghubungkan printer. Periksa izin Bluetooth dan pastikan printer siap.'), 'error');
     }
 }
 

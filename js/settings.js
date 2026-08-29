@@ -1,286 +1,408 @@
-let currentSettingsTab = 'toko';
+let currentSettingsTab = '';
+let currentOperationalSection = 'home';
 let lastSettingsScroll = 0;
 let lastSettingsTabScroll = 0;
+let operationalSearch = { meja: '', kasir: '', diskon: '' };
+let operationalStatus = { meja: 'semua', kasir: 'semua', diskon: 'semua' };
+
+function _settingsAttr(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 function renderSettings() {
   const _m = document.querySelector('main');
   if (_m && state.currentView === "settings") lastSettingsScroll = _m.scrollTop;
 
-  const tabNav = document.querySelector('.tab-nav');
-  if (tabNav && state.currentView === "settings") lastSettingsTabScroll = tabNav.scrollLeft;
-
   state.currentView = "settings";
-  const content = `
-    <div class="stack-y">
+  const settingsMenu = [
+    ['struk', 'fa-receipt', 'Struk', 'Identitas & tampilan'],
+    ['kasir', 'fa-users', 'Kasir', 'Kelola kasir dan akses'],
+    ['meja', 'fa-chair', 'Meja', 'Kelola meja'],
+    ['diskon', 'fa-percent', 'Diskon', 'Kelola diskon dan template'],
+    ['backup', 'fa-database', 'Backup', 'Import, export & reset data']
+  ];
 
-      <div class="tab-nav">
-        <button class="tab-btn ${currentSettingsTab === 'toko' ? 'active' : ''}" onclick="switchSettingsTab('toko')">
-          <i class="fas fa-store"></i> Toko
-        </button>
-        <button class="tab-btn ${currentSettingsTab === 'struk' ? 'active' : ''}" onclick="switchSettingsTab('struk')">
-          <i class="fas fa-receipt"></i> Struk
-        </button>
-        <button class="tab-btn ${currentSettingsTab === 'meja' ? 'active' : ''}" onclick="switchSettingsTab('meja')">
-          <i class="fas fa-chair"></i> Meja
-        </button>
-        <button class="tab-btn ${currentSettingsTab === 'kasir' ? 'active' : ''}" onclick="switchSettingsTab('kasir')">
-          <i class="fas fa-users"></i> Kasir
-        </button>
-        <button class="tab-btn ${currentSettingsTab === 'backup' ? 'active' : ''}" onclick="switchSettingsTab('backup')">
-          <i class="fas fa-database"></i> Backup
-        </button>
-      </div>
-      <div id="settings-content" class="settings-content">
-        ${renderSettingsTab()}
-      </div>
+  const content = `
+    <div class="stack-y page-static settings-page">
+      <nav class="settings-menu" aria-label="Pengaturan">
+        ${settingsMenu.map(([key, icon, title, subtitle]) => `
+          <div class="settings-menu-group ${currentSettingsTab === key ? 'open' : ''}">
+            <button type="button" class="settings-menu-item ${currentSettingsTab === key ? 'active' : ''}"
+                    onclick="switchSettingsTab('${key}')" aria-expanded="${currentSettingsTab === key ? 'true' : 'false'}">
+              <span class="settings-menu-icon"><i class="fas ${icon}"></i></span>
+              <span class="settings-menu-copy">
+                <strong>${title}</strong>
+                <small>${subtitle}</small>
+              </span>
+              <i class="fas fa-chevron-down settings-menu-chevron"></i>
+            </button>
+            ${currentSettingsTab === key ? `
+              <div id="settings-content-${key}" class="settings-content settings-menu-content">
+                ${renderSettingsTab()}
+              </div>
+            ` : ''}
+          </div>
+        `).join('')}
+      </nav>
     </div>
   `;
+
   app.innerHTML = Layout.renderMain(content);
   Layout._restoreSidebarScroll();
+
   requestAnimationFrame(() => {
     const _main = document.querySelector('main');
-    if (_main && lastSettingsScroll > 0) {
-      _main.scrollTop = lastSettingsScroll;
-    }
-    const _tabNav = document.querySelector('.tab-nav');
-    if (_tabNav && lastSettingsTabScroll > 0) {
-      _tabNav.scrollLeft = lastSettingsTabScroll;
-    }
+    if (_main && lastSettingsScroll > 0) _main.scrollTop = lastSettingsScroll;
   });
 }
 
 function renderSettingsTab() {
   const s = state.settings || {};
-  if (currentSettingsTab === 'toko') {
-    return `
-      <div class="settings-card">
-        <h3><i class="fas fa-store"></i> Informasi Toko</h3>
-        <div class="form-group">
-          <label class="form-label">Nama Toko</label>
-          <input type="text" id="tokoNama" class="form-input" placeholder="Contoh: Kedai Kopi Budi" value="${s.toko?.nama || ''}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Alamat</label>
-          <textarea id="tokoAlamat" class="form-input" rows="3" placeholder="Contoh: Jl. Merdeka No. 10, Jakarta">${s.toko?.alamat || ''}</textarea>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Telepon</label>
-          <input type="text" id="tokoTelepon" class="form-input" placeholder="Contoh: 0812-3456-7890" value="${s.toko?.telepon || ''}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Email</label>
-          <input type="email" id="tokoEmail" class="form-input" placeholder="Contoh: kedaikopibudi@gmail.com" value="${s.toko?.email || ''}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Jam Buka Operasional</label>
-          <input type="time" id="jamBukaOps" class="form-input" value="${s.operasional?.jamBuka || '08:00'}">
-          <small class="text-muted operasional-info">
-            <i class="fas fa-info-circle"></i>
-            Dipakai untuk reset hari di Laporan.
-          </small>
-        </div>
-        <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveTokoSettings().finally(()=>Utils.setButtonLoading(b,false))">
-          <i class="fas fa-save"></i> Simpan
-        </button>
-      </div>
-    `;
-  }
   if (currentSettingsTab === 'struk') {
     const footerText = s.struk?.footer?.join('\n') || '';
     return `
-      <div class="settings-card">
-        <h3><i class="fas fa-receipt"></i> Pengaturan Struk</h3>
-        <div class="form-group">
-          <label class="form-label">Header Struk</label>
-          <input type="text" id="strukHeader" class="form-input" value="${s.struk?.header || 'TERIMA KASIH'}">
+      <div class="settings-card settings-module-card">
+        <div class="settings-section-head">
+          <div>
+            <h3><i class="fas fa-receipt"></i> Struk</h3>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="const b=this;Utils.setButtonLoading(b,true);saveStrukSettings().finally(()=>Utils.setButtonLoading(b,false))">
+            <i class="fas fa-save"></i> Simpan
+          </button>
         </div>
-        <div class="form-group">
-          <label class="form-label">Footer Struk</label>
-          <textarea id="strukFooter" class="form-input" rows="4" placeholder="Contoh:
-Terima kasih sudah berbelanja
-IG: @namatoko
-WA: 0812-3456-7890">${footerText}</textarea>
-          <small class="text-muted">Setiap baris dipisahkan dengan enter</small>
+
+        <div class="settings-form-stack">
+          <div class="form-group">
+            <label class="form-label">Nama Toko</label>
+            <input type="text" id="tokoNama" class="form-input" value="${s.toko?.nama || ''}">
+            <small class="text-muted settings-field-help"><i class="fas fa-info-circle"></i> Untuk struk &amp; laporan.</small>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Alamat</label>
+            <textarea id="tokoAlamat" class="form-input" rows="3">${s.toko?.alamat || ''}</textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Telepon</label>
+            <input type="text" id="tokoTelepon" class="form-input" value="${s.toko?.telepon || ''}">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" id="tokoEmail" class="form-input" value="${s.toko?.email || ''}">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Jam Buka Operasional</label>
+            <input type="time" id="jamBukaOps" class="form-input" value="${s.operasional?.jamBuka || '08:00'}">
+            <small class="text-muted settings-field-help"><i class="fas fa-info-circle"></i> Untuk reset harian pada Laporan.</small>
+          </div>
+
+          <div class="settings-form-separator" aria-hidden="true"></div>
+
+          <div class="form-group">
+            <label class="form-label">Header Struk</label>
+            <input type="text" id="strukHeader" class="form-input" value="${s.struk?.header || 'TERIMA KASIH'}">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Footer Struk</label>
+            <textarea id="strukFooter" class="form-input" rows="4">${footerText}</textarea>
+          </div>
+
+          <div class="checkbox-group settings-receipt-options">
+            <label class="checkbox-label">
+              <input type="checkbox" id="showMeja" ${s.struk?.showMeja !== false ? 'checked' : ''}>
+              <span>Tampilkan nomor meja di struk</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="showHargaSatuan" ${s.struk?.showHargaSatuan === true ? 'checked' : ''}>
+              <span>Tampilkan harga satuan</span>
+            </label>
+          </div>
         </div>
-        <div class="checkbox-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="showMeja" ${s.struk?.showMeja !== false ? 'checked' : ''}>
-            Tampilkan nomor meja di struk
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" id="showHargaSatuan" ${s.struk?.showHargaSatuan !== false ? 'checked' : ''}>
-            Tampilkan harga satuan
-          </label>
-        </div>
-        <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveStrukSettings().finally(()=>Utils.setButtonLoading(b,false))">
-          <i class="fas fa-save"></i> Simpan
-        </button>
       </div>
     `;
   }
-  if (currentSettingsTab === 'meja') {
-    const mejaAll = SortableTable.sort(state.tables, 'meja');
-    const mejaList = mejaAll.filter(t => t.aktif !== false);
+
+  if (currentSettingsTab === 'kasir') {
+    const kasirRaw = (s.kasirs || []).map((k, i) => ({ ...k, _origIndex: i }));
+    const kasirList = SortableTable.sort(kasirRaw, 'kasir');
+    const q = operationalSearch.kasir.trim().toLowerCase();
+    const status = operationalStatus.kasir;
+    const kasirFiltered = kasirList.filter(k => {
+      const matchesQuery = !q || String(k.nama || '').toLowerCase().includes(q);
+      const matchesStatus = status === 'semua' || (status === 'aktif' ? k.aktif !== false : k.aktif === false);
+      return matchesQuery && matchesStatus;
+    });
+
     return `
-      <div class="settings-card">
-        <h3><i class="fas fa-chair"></i> Manajemen Meja</h3>
-        <div class="checkbox-group">
+      <div class="settings-card settings-module-card settings-kasir-card">
+        <div class="settings-section-head">
+          <div>
+            <h3><i class="fas fa-users"></i> Kasir</h3>
+            <p class="settings-section-subtitle">Kelola kasir dan akses.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="const b=this;Utils.setButtonLoading(b,true);saveKasirSettings([...(state.settings?.kasirs || [])]).finally(()=>Utils.setButtonLoading(b,false))">
+            <i class="fas fa-save"></i> Simpan
+          </button>
+        </div>
+
+        <div class="add-row operational-add-row">
+          <input type="text" id="newKasirNama" class="form-input" placeholder="Nama kasir">
+          <button class="btn btn-primary" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);tambahKasir().finally(()=>Utils.setButtonLoading(b,false))">
+            <i class="fas fa-plus"></i> Tambah
+          </button>
+        </div>
+
+        <div class="operational-list-toolbar">
+          <div class="operational-search">
+            <i class="fas fa-search"></i>
+            <input class="form-input" value="${operationalSearch.kasir}" placeholder="Cari nama kasir..." oninput="setOperationalSearch('kasir', this.value)">
+          </div>
+          <select class="form-input operational-filter" aria-label="Filter status kasir" onchange="setOperationalStatus('kasir', this.value)">
+            <option value="semua" ${status === 'semua' ? 'selected' : ''}>Semua</option>
+            <option value="aktif" ${status === 'aktif' ? 'selected' : ''}>Aktif</option>
+            <option value="nonaktif" ${status === 'nonaktif' ? 'selected' : ''}>Nonaktif</option>
+          </select>
+        </div>
+        <div class="operational-list-meta">${kasirFiltered.length} dari ${kasirList.length} kasir</div>
+
+        <div class="operational-scroll-list settings-record-list">
+          ${kasirFiltered.length ? kasirFiltered.map(k => `
+            <div class="settings-record-row settings-kasir-record" data-settings-search="${_settingsAttr(k.nama)}" data-settings-active="${k.aktif !== false ? 'true' : 'false'}">
+              <div class="settings-record-main">
+                <strong>${k.nama}</strong>
+              </div>
+              <span class="badge ${k.aktif !== false ? 'badge-success' : 'badge-danger'} settings-record-status">${k.aktif !== false ? 'Aktif' : 'Nonaktif'}</span>
+              <div class="settings-record-actions">
+                <button class="btn btn-sm ${k.aktif !== false ? 'btn-warning' : 'btn-primary'}" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);toggleKasirStatus(${k._origIndex}).finally(()=>Utils.setButtonLoading(b,false))">${k.aktif !== false ? 'Nonaktifkan' : 'Aktifkan'}</button>
+                <button class="btn btn-sm btn-icon-sm btn-icon-warning" onclick="_saveSettingsScroll();editKasir(${k._origIndex})" title="Edit"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-danger btn-icon-sm" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);hapusKasir(${k._origIndex}).finally(()=>Utils.setButtonLoading(b,false))" title="Hapus"><i class="fas fa-trash"></i></button>
+              </div>
+            </div>
+          `).join('') : ''}
+          <div class="settings-operational-empty text-muted text-center p-3" ${kasirFiltered.length ? 'hidden' : ''}>Belum ada kasir yang sesuai.</div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (currentSettingsTab === 'meja') {
+    const mejaAktif = s.fitur?.meja !== undefined ? s.fitur.meja !== false : s.meja?.aktif !== false;
+    const mejaAll = SortableTable.sort(state.tables || [], 'meja');
+    const q = operationalSearch.meja.trim().toLowerCase();
+    const status = operationalStatus.meja;
+    const mejaFiltered = mejaAll.filter(t => {
+      const matchesQuery = !q || String(t.nomor || '').toLowerCase().includes(q) || String(t.nama || '').toLowerCase().includes(q);
+      const matchesStatus = status === 'semua' || (status === 'aktif' ? t.aktif !== false : t.aktif === false);
+      return matchesQuery && matchesStatus;
+    });
+
+    return `
+      <div class="settings-card settings-module-card settings-meja-card">
+        <div class="settings-section-head">
+          <div>
+            <h3><i class="fas fa-chair"></i> Meja</h3>
+            <p class="settings-section-subtitle">Kelola meja dan pengaturan fitur meja.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="const b=this;Utils.setButtonLoading(b,true);saveFiturSettings().finally(()=>Utils.setButtonLoading(b,false))">
+            <i class="fas fa-save"></i> Simpan
+          </button>
+        </div>
+
+        <div class="checkbox-group operational-feature-toggle">
           <label class="checkbox-label">
-            <input type="checkbox" id="mejaAktif" ${s.meja?.aktif !== false ? 'checked' : ''}>
-            Aktifkan fitur meja
+            <input type="checkbox" id="fiturMejaAktif" ${mejaAktif ? 'checked' : ''}>
+            <span><strong>Aktifkan fitur meja</strong></span>
           </label>
         </div>
-        <div class="add-row">
+
+        <div class="add-row operational-add-row">
           <input type="text" id="newMejaNomor" class="form-input" placeholder="Nomor meja">
           <input type="text" id="newMejaNama" class="form-input" placeholder="Nama meja">
           <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);tambahMeja().finally(()=>Utils.setButtonLoading(b,false))">
             <i class="fas fa-plus"></i> Tambah
           </button>
         </div>
-        <table class="settings-table">
-          <thead class="neu-table-head">
-            <tr>
-              <th class="td-base text-left cursor-pointer" onclick="sortMeja('nomor')">
-                Nomor <i class="fas ${SortableTable.getSortIcon('meja', 'nomor')}"></i>
-              </th>
-              <th class="td-base text-left cursor-pointer" onclick="sortMeja('nama')">
-                Nama <i class="fas ${SortableTable.getSortIcon('meja', 'nama')}"></i>
-              </th>
-              <th class="td-base text-left">Status</th>
-              <th class="td-base text-left">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${mejaList.map(m => `
-              <tr>
-                <td class="td-base" data-label="Nomor">${m.nomor}</td>
-                <td class="td-base" data-label="Nama">${m.nama}</td>
-                <td class="td-base" data-label="Status">
-                  <span class="badge ${m.aktif ? 'badge-success' : 'badge-danger'}">
-                    ${m.aktif ? 'Aktif' : 'Nonaktif'}
-                  </span>
-                </td>
-                <td class="table-actions" data-label="Aksi">
-                  <button class="btn btn-sm btn-secondary" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);toggleMejaStatus('${m.id}').finally(()=>Utils.setButtonLoading(b,false))">
-                    ${m.aktif ? 'Nonaktifkan' : 'Aktifkan'}
-                  </button>
-                  <button class="btn btn-sm btn-icon-sm" onclick="_saveSettingsScroll();editMeja('${m.id}')" title="Edit">
-                    <i class="fas fa-edit text-muted"></i>
-                  </button>
-                  <button class="btn btn-sm btn-danger" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);hapusMeja('${m.id}').finally(()=>Utils.setButtonLoading(b,false))">
-                    <i class="fas fa-trash"></i>
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveMejaSettings().finally(()=>Utils.setButtonLoading(b,false))">
-          <i class="fas fa-save"></i> Simpan
-        </button>
+
+        <div class="operational-list-toolbar">
+          <div class="operational-search">
+            <i class="fas fa-search"></i>
+            <input class="form-input" value="${operationalSearch.meja}" placeholder="Cari nomor atau nama meja..." oninput="setOperationalSearch('meja', this.value)">
+          </div>
+          <select class="form-input operational-filter" aria-label="Filter status meja" onchange="setOperationalStatus('meja', this.value)">
+            <option value="semua" ${status === 'semua' ? 'selected' : ''}>Semua</option>
+            <option value="aktif" ${status === 'aktif' ? 'selected' : ''}>Aktif</option>
+            <option value="nonaktif" ${status === 'nonaktif' ? 'selected' : ''}>Nonaktif</option>
+          </select>
+        </div>
+        <div class="operational-list-meta">${mejaFiltered.length} dari ${mejaAll.length} meja</div>
+
+        <div class="operational-scroll-list settings-record-list">
+          ${mejaFiltered.length ? mejaFiltered.map(m => `
+            <div class="settings-record-row settings-meja-record" data-settings-search="${_settingsAttr(`${m.nomor} ${m.nama || ''}`)}" data-settings-active="${m.aktif !== false ? 'true' : 'false'}">
+              <div class="settings-record-main">
+                <strong>${m.nomor}</strong>
+                <small>${m.nama || 'Tanpa nama'}</small>
+              </div>
+              <span class="badge ${m.aktif !== false ? 'badge-success' : 'badge-danger'} settings-record-status">${m.aktif !== false ? 'Aktif' : 'Nonaktif'}</span>
+              <div class="settings-record-actions">
+                <button class="btn btn-sm ${m.aktif !== false ? 'btn-warning' : 'btn-primary'}" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);toggleMejaStatus('${m.id}').finally(()=>Utils.setButtonLoading(b,false))">${m.aktif !== false ? 'Nonaktifkan' : 'Aktifkan'}</button>
+                <button class="btn btn-sm btn-icon-sm btn-icon-warning" onclick="_saveSettingsScroll();editMeja('${m.id}')" title="Edit"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-danger btn-icon-sm" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);hapusMeja('${m.id}').finally(()=>Utils.setButtonLoading(b,false))" title="Hapus"><i class="fas fa-trash"></i></button>
+              </div>
+            </div>
+          `).join('') : ''}
+          <div class="settings-operational-empty text-muted text-center p-3" ${mejaFiltered.length ? 'hidden' : ''}>Belum ada meja yang sesuai.</div>
+        </div>
       </div>
     `;
   }
-  if (currentSettingsTab === 'kasir') {
-    const kasirRaw = (s.kasirs || []).map((k, i) => ({ ...k, _origIndex: i }));
-    const kasirList = SortableTable.sort(kasirRaw, 'kasir');
+
+  if (currentSettingsTab === 'diskon') {
+    const diskonAktif = s.fitur?.diskon !== false;
+    const diskonCfg = s.fitur?.diskonPengaturan || {};
+    const diskonMode = diskonCfg.mode || 'both';
+    const templates = Array.isArray(diskonCfg.templates) ? diskonCfg.templates : [];
+    const q = operationalSearch.diskon.trim().toLowerCase();
+    const status = operationalStatus.diskon;
+    const templateFiltered = templates.filter(t => {
+      const matchesQuery = !q || String(t.nama || '').toLowerCase().includes(q);
+      const matchesStatus = status === 'semua' || (status === 'aktif' ? t.aktif !== false : t.aktif === false);
+      return matchesQuery && matchesStatus;
+    });
+
     return `
-      <div class="settings-card">
-        <h3><i class="fas fa-users"></i> Manajemen Kasir</h3>
-        <p class="text-muted mb-3">Daftar nama kasir yang bisa di-checklist saat membuka shift jaga.</p>
-        <div class="add-row">
-          <input type="text" id="newKasirNama" class="form-input" placeholder="Tuliskan nama kasir (contoh: Andi)">
-          <button class="btn btn-primary" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);tambahKasir().finally(()=>Utils.setButtonLoading(b,false))">
+      <div class="settings-card settings-module-card">
+        <div class="settings-section-head">
+          <div>
+            <h3><i class="fas fa-percent"></i> Diskon</h3>
+            <p class="settings-section-subtitle">Kelola fitur, mode, dan template diskon.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="const b=this;Utils.setButtonLoading(b,true);saveFiturSettings().finally(()=>Utils.setButtonLoading(b,false))">
+            <i class="fas fa-save"></i> Simpan
+          </button>
+        </div>
+
+        <div class="checkbox-group operational-feature-toggle">
+          <label class="checkbox-label">
+            <input type="checkbox" id="fiturDiskonAktif" ${diskonAktif ? 'checked' : ''}>
+            <span><strong>Aktifkan fitur diskon</strong></span>
+          </label>
+        </div>
+
+        <div class="form-group operational-discount-mode">
+          <label class="form-label">Mode Diskon</label>
+          <select id="diskonModeKasir" class="form-input">
+            <option value="manual" ${diskonMode === 'manual' ? 'selected' : ''}>Manual saja</option>
+            <option value="auto" ${diskonMode === 'auto' ? 'selected' : ''}>Otomatis dari template</option>
+            <option value="both" ${diskonMode === 'both' ? 'selected' : ''}>Manual + Otomatis</option>
+          </select>
+        </div>
+
+        <div class="discount-template-form">
+          <input id="discountTemplateName" class="form-input" placeholder="Nama template">
+          <input id="discountTemplateMin" class="form-input" type="number" min="0" placeholder="Minimal belanja">
+          <select id="discountTemplateType" class="form-input">
+            <option value="percent">Persen (%)</option>
+            <option value="nominal">Nominal (Rp)</option>
+          </select>
+          <input id="discountTemplateValue" class="form-input" type="number" min="0" placeholder="Nilai diskon">
+          <button class="btn btn-secondary" onclick="const b=this;Utils.setButtonLoading(b,true);tambahTemplateDiskon().finally(()=>Utils.setButtonLoading(b,false))">
             <i class="fas fa-plus"></i> Tambah
           </button>
         </div>
-        <table class="settings-table">
-          <thead class="neu-table-head">
-            <tr>
-              <th class="td-base text-left cursor-pointer" onclick="sortKasir('nama')">
-                Nama <i class="fas ${SortableTable.getSortIcon('kasir', 'nama')}"></i>
-              </th>
-              <th class="td-base text-left cursor-pointer" onclick="sortKasir('aktif')">
-                Status <i class="fas ${SortableTable.getSortIcon('kasir', 'aktif')}"></i>
-              </th>
-              <th class="td-base text-left">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${kasirList.map(k => `
-              <tr>
-                <td class="td-base" data-label="Nama">${k.nama}</td>
-                <td class="td-base" data-label="Status">
-                  <span class="badge ${k.aktif !== false ? 'badge-success' : 'badge-danger'}">
-                    ${k.aktif !== false ? 'Aktif' : 'Nonaktif'}
-                  </span>
-                </td>
-                <td class="table-actions" data-label="Aksi">
-                  <button class="btn btn-sm btn-secondary" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);toggleKasirStatus(${k._origIndex}).finally(()=>Utils.setButtonLoading(b,false))">
-                    ${k.aktif !== false ? 'Nonaktifkan' : 'Aktifkan'}
-                  </button>
-                  <button class="btn btn-sm btn-icon-sm" onclick="_saveSettingsScroll();editKasir(${k._origIndex})" title="Edit">
-                    <i class="fas fa-edit text-muted"></i>
-                  </button>
-                  <button class="btn btn-sm btn-danger" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);hapusKasir(${k._origIndex}).finally(()=>Utils.setButtonLoading(b,false))">
-                    <i class="fas fa-trash"></i>
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-            ${kasirList.length === 0 ? '<tr><td colspan="3" class="text-center text-muted">Belum ada kasir terdaftar</td></tr>' : ''}
-          </tbody>
-        </table>
+
+        <div class="operational-list-toolbar">
+          <div class="operational-search">
+            <i class="fas fa-search"></i>
+            <input class="form-input" value="${operationalSearch.diskon}" placeholder="Cari template..." oninput="setOperationalSearch('diskon', this.value)">
+          </div>
+          <select class="form-input operational-filter" aria-label="Filter status diskon" onchange="setOperationalStatus('diskon', this.value)">
+            <option value="semua" ${status === 'semua' ? 'selected' : ''}>Semua</option>
+            <option value="aktif" ${status === 'aktif' ? 'selected' : ''}>Aktif</option>
+            <option value="nonaktif" ${status === 'nonaktif' ? 'selected' : ''}>Nonaktif</option>
+          </select>
+        </div>
+        <div class="operational-list-meta">${templateFiltered.length} dari ${templates.length} diskon</div>
+
+        <div class="discount-template-list operational-scroll-list">
+          ${templateFiltered.length ? templateFiltered.map(t => {
+            const idx = templates.indexOf(t);
+            return `
+              <div class="settings-record-row settings-diskon-record" data-settings-search="${_settingsAttr(t.nama || 'Diskon')}" data-settings-active="${t.aktif === false ? 'false' : 'true'}">
+                <div class="settings-record-main">
+                  <strong>${t.nama || 'Diskon'}</strong>
+                  <small>Min. Rp ${Utils.formatRupiah(Number(t.minBelanja || 0))} · ${t.tipe === 'nominal' ? 'Rp ' + Utils.formatRupiah(Number(t.nilai || 0)) : Number(t.nilai || 0) + '%'}</small>
+                </div>
+                <span class="badge ${t.aktif === false ? 'badge-danger' : 'badge-success'} settings-record-status">${t.aktif === false ? 'Nonaktif' : 'Aktif'}</span>
+                <div class="settings-record-actions discount-template-actions">
+                  <button class="btn btn-sm ${t.aktif === false ? 'btn-primary' : 'btn-warning'}" onclick="toggleTemplateDiskon(${idx})">${t.aktif === false ? 'Aktifkan' : 'Nonaktifkan'}</button>
+                  <button class="btn btn-sm btn-icon-sm btn-icon-warning" onclick="editTemplateDiskon(${idx})" title="Edit"><i class="fas fa-edit"></i></button>
+                  <button class="btn btn-sm btn-danger btn-icon-sm" onclick="hapusTemplateDiskon(${idx})" title="Hapus"><i class="fas fa-trash"></i></button>
+                </div>
+              </div>
+            `;
+          }).join('') : ''}
+          <div class="settings-operational-empty text-muted text-center p-3" ${templateFiltered.length ? 'hidden' : ''}>Belum ada diskon yang sesuai.</div>
+        </div>
       </div>
     `;
   }
+
   if (currentSettingsTab === 'backup') {
     return `
       <div class="settings-card">
-        <h3><i class="fas fa-database"></i> Backup & Restore</h3>
-        <div class="backup-grid">
-          <div class="backup-card">
-            <div class="backup-icon">
-              <i class="fas fa-file-import"></i>
-            </div>
+        <div class="settings-section-head settings-backup-head"><h3><i class="fas fa-database"></i> Backup & Restore</h3></div>
+        <div class="backup-grid settings-backup-grid">
+          <div class="backup-card settings-backup-card">
+            <div class="backup-icon"><i class="fas fa-file-import"></i></div>
             <h4>Import Excel</h4>
-            <p>Import menu & bahan</p>
-            <input type="file" id="importExcelFile" accept=".xlsx,.xls" class="file-input-spaced">
-            <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);importFromExcel().finally(()=>Utils.setButtonLoading(b,false))">
-              <i class="fas fa-upload"></i> Import
-            </button>
-          </div>
-          <div class="backup-card">
-            <div class="backup-icon">
-              <i class="fas fa-download"></i>
+            <p>Menu, kategori &amp; bahan</p>
+            <div class="backup-card-control">
+              <div class="settings-file-picker">
+                <input type="file" id="importExcelFile" accept=".xlsx,.xls" class="settings-file-input" onchange="updateImportExcelFileName(this)">
+                <label for="importExcelFile" class="btn btn-secondary settings-file-picker-btn">
+                  <i class="fas fa-folder-open"></i> Pilih File
+                </label>
+                <span id="importExcelFileName" class="settings-file-name">Tidak ada file yang dipilih</span>
+              </div>
+              <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);importFromExcel().finally(()=>Utils.setButtonLoading(b,false))">
+                <i class="fas fa-upload"></i> Import
+              </button>
             </div>
+          </div>
+          <div class="backup-card settings-backup-card">
+            <div class="backup-icon"><i class="fas fa-download"></i></div>
             <h4>Template Excel</h4>
-            <p>Download template import</p>
-            <button class="btn btn-secondary" onclick="downloadTemplateExcel()">
-              <i class="fas fa-file"></i> Template
-            </button>
-          </div>
-        </div>
-        <div class="backup-grid">
-          <div class="backup-card warning">
-            <div class="backup-icon">
-              <i class="fas fa-history"></i>
+            <p>Kategori, menu &amp; bahan</p>
+            <div class="backup-card-control">
+              <button class="btn btn-secondary" onclick="downloadTemplateExcel()">
+                <i class="fas fa-file"></i> Template
+              </button>
             </div>
+          </div>
+          <div class="backup-card warning settings-backup-card">
+            <div class="backup-icon"><i class="fas fa-history"></i></div>
             <h4>Reset Riwayat</h4>
-            <p>Hapus transaksi & sesi.<br>Kategori, Menu, Bahan tetap</p>
-            <button class="btn btn-warning" onclick="const b=this;Utils.setButtonLoading(b,true);resetRiwayatOnly().finally(()=>Utils.setButtonLoading(b,false))">
-              <i class="fas fa-trash-alt"></i> Reset
-            </button>
-          </div>
-          <div class="backup-card danger">
-            <div class="backup-icon">
-              <i class="fas fa-exclamation-triangle"></i>
+            <p>Transaksi, shift &amp; mutasi stok</p>
+            <div class="backup-card-control">
+              <button class="btn btn-warning" onclick="const b=this;Utils.setButtonLoading(b,true);resetRiwayatOnly().finally(()=>Utils.setButtonLoading(b,false))">
+                <i class="fas fa-trash-alt"></i> Reset
+              </button>
             </div>
+          </div>
+          <div class="backup-card danger settings-backup-card">
+            <div class="backup-icon"><i class="fas fa-exclamation-triangle"></i></div>
             <h4>Reset Total</h4>
-            <p>Hapus SEMUA data!<br>Termasuk menu & bahan</p>
-            <button class="btn btn-danger" onclick="const b=this;Utils.setButtonLoading(b,true);resetData().finally(()=>Utils.setButtonLoading(b,false))">
-              <i class="fas fa-skull-crossbones"></i> Reset Total
-            </button>
+            <p>Semua data aplikasi</p>
+            <div class="backup-card-control">
+              <button class="btn btn-danger" onclick="const b=this;Utils.setButtonLoading(b,true);resetData().finally(()=>Utils.setButtonLoading(b,false))">
+                <i class="fas fa-skull-crossbones"></i> Reset Total
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -290,10 +412,62 @@ WA: 0812-3456-7890">${footerText}</textarea>
 }
 
 function switchSettingsTab(tab) {
+  if (!['struk', 'kasir', 'meja', 'diskon', 'backup'].includes(tab)) return;
   const _m = document.querySelector('main');
-  if (_m && currentSettingsTab === tab) _saveSettingsScroll(); else lastSettingsScroll = 0;
-  currentSettingsTab = tab;
+  const isClosing = currentSettingsTab === tab;
+  if (_m) _saveSettingsScroll();
+  currentSettingsTab = isClosing ? '' : tab;
   renderSettings();
+  requestAnimationFrame(() => {
+    const main = document.querySelector('main');
+    if (main) main.scrollTop = lastSettingsScroll;
+  });
+}
+
+
+function setOperationalSearch(section, value) {
+  operationalSearch[section] = value;
+  const content = document.getElementById(`settings-content-${section}`);
+  if (!content) return;
+
+  const query = String(value || '').trim().toLowerCase();
+  const status = operationalStatus[section] || 'semua';
+  const rows = Array.from(content.querySelectorAll('[data-settings-search]'));
+  let visible = 0;
+
+  rows.forEach(row => {
+    const text = String(row.dataset.settingsSearch || '').toLowerCase();
+    const active = row.dataset.settingsActive === 'true';
+    const matchesQuery = !query || text.includes(query);
+    const matchesStatus = status === 'semua' || (status === 'aktif' ? active : !active);
+    const show = matchesQuery && matchesStatus;
+    row.hidden = !show;
+    if (show) visible++;
+  });
+
+  const meta = content.querySelector('.operational-list-meta');
+  if (meta) {
+    const labels = { kasir: 'kasir', meja: 'meja', diskon: 'diskon' };
+    meta.textContent = `${visible} dari ${rows.length} ${labels[section] || ''}`.trim();
+  }
+
+  const empty = content.querySelector('.settings-operational-empty');
+  if (empty) empty.hidden = visible !== 0;
+}
+
+function setOperationalStatus(section, value) {
+  operationalStatus[section] = value;
+  renderSettings();
+}
+
+function switchOperationalSection(section) {
+  _saveSettingsScroll();
+  currentOperationalSection = ['home', 'meja', 'kasir', 'diskon'].includes(section) ? section : 'home';
+  renderSettings();
+  requestAnimationFrame(() => {
+    const main = document.querySelector('main');
+    if (main) main.scrollTop = lastSettingsScroll;
+  });
 }
 
 function _saveSettingsScroll() {
@@ -302,53 +476,41 @@ function _saveSettingsScroll() {
 }
 
 async function saveTokoSettings() {
-  _saveSettingsScroll();
-  try {
-    const tokoData = {
-      nama: document.getElementById('tokoNama').value,
-      alamat: document.getElementById('tokoAlamat').value,
-      telepon: document.getElementById('tokoTelepon').value,
-      email: document.getElementById('tokoEmail').value
-    };
-    const jamBuka = document.getElementById('jamBukaOps')?.value || '08:00';
-
-    await dbCloud.collection("settings").doc("toko").update({
-      toko: tokoData,
-      operasional: { jamBuka }
-    });
-
-    state.settings.toko = tokoData;
-    if (!state.settings.operasional) state.settings.operasional = {};
-    state.settings.operasional.jamBuka = jamBuka;
-
-    Utils.showToast("Pengaturan disimpan");
-  } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
-  }
+  return saveStrukSettings();
 }
 
 async function saveStrukSettings() {
   _saveSettingsScroll();
   try {
-    const footerText = document.getElementById('strukFooter').value;
-    const footer = footerText.split('\n').filter(l => l.trim() !== '');
-    await dbCloud.collection("settings").doc("toko").update({
-      struk: {
-        header: document.getElementById('strukHeader').value,
-        footer: footer,
-        showMeja: document.getElementById('showMeja').checked,
-        showHargaSatuan: document.getElementById('showHargaSatuan').checked
-      }
-    });
-    state.settings.struk = {
-      header: document.getElementById('strukHeader').value,
-      footer: footer,
-      showMeja: document.getElementById('showMeja').checked,
-      showHargaSatuan: document.getElementById('showHargaSatuan').checked
+    const tokoData = {
+      nama: document.getElementById('tokoNama')?.value || '',
+      alamat: document.getElementById('tokoAlamat')?.value || '',
+      telepon: document.getElementById('tokoTelepon')?.value || '',
+      email: document.getElementById('tokoEmail')?.value || ''
     };
+    const jamBuka = document.getElementById('jamBukaOps')?.value || '08:00';
+    const footerText = document.getElementById('strukFooter')?.value || '';
+    const footer = footerText.split('\n').filter(l => l.trim() !== '');
+    const strukData = {
+      header: document.getElementById('strukHeader')?.value || 'TERIMA KASIH',
+      footer,
+      showMeja: document.getElementById('showMeja')?.checked !== false,
+      showHargaSatuan: document.getElementById('showHargaSatuan')?.checked === true
+    };
+
+    await dbCloud.collection("settings").doc("toko").update({
+      toko: tokoData,
+      operasional: { ...(state.settings?.operasional || {}), jamBuka },
+      struk: strukData
+    });
+
+    state.settings.toko = tokoData;
+    state.settings.operasional = { ...(state.settings.operasional || {}), jamBuka };
+    state.settings.struk = strukData;
+
     Utils.showToast("Pengaturan disimpan");
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -370,7 +532,7 @@ async function tambahMeja() {
     document.getElementById('newMejaNama').value = '';
     Utils.showToast("Meja ditambahkan");
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -384,7 +546,7 @@ async function toggleMejaStatus(id) {
     });
     Utils.showToast(`Meja ${!meja.aktif ? 'diaktifkan' : 'dinonaktifkan'}`);
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -395,8 +557,129 @@ async function hapusMeja(id) {
     await dbCloud.collection("tables").doc(id).delete();
     Utils.showToast("Meja dihapus");
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
+}
+
+async function saveFiturSettings() {
+  _saveSettingsScroll();
+  try {
+    const meja = document.getElementById('fiturMejaAktif')?.checked ?? (state.settings?.fitur?.meja !== false);
+    const diskon = document.getElementById('fiturDiskonAktif')?.checked ?? (state.settings?.fitur?.diskon !== false);
+    const diskonMode = document.getElementById('diskonModeKasir')?.value || 'both';
+    const currentTemplates = Array.isArray(state.settings?.fitur?.diskonPengaturan?.templates)
+      ? state.settings.fitur.diskonPengaturan.templates : [];
+    const diskonPengaturan = {
+      mode: ['manual','auto','both'].includes(diskonMode) ? diskonMode : 'both',
+      templates: currentTemplates
+    };
+    const fitur = { ...(state.settings.fitur || {}), meja, diskon, diskonPengaturan };
+    await dbCloud.collection("settings").doc("toko").update({
+      fitur,
+      meja: { ...(state.settings.meja || {}), aktif: meja }
+    });
+    state.settings.fitur = fitur;
+    state.settings.meja = { ...(state.settings.meja || {}), aktif: meja };
+    if (!meja) state.selectedTable = null;
+    if (!diskon && !window._currentOpenBillId) {
+      state.discountMode = 'percent';
+      state.discountValue = 0;
+      state.discountSource = 'manual';
+      state.discountTemplateId = null;
+      window._discountDraftValue = 0;
+    }
+    Utils.showToast("Pengaturan fitur disimpan");
+    renderSettings();
+  } catch (error) {
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
+  }
+}
+
+async function _saveDiscountTemplates(templates) {
+  const fitur = { ...(state.settings?.fitur || {}), diskonPengaturan: { ...(state.settings?.fitur?.diskonPengaturan || {}), templates } };
+  await dbCloud.collection('settings').doc('toko').update({ fitur });
+  state.settings.fitur = fitur;
+  renderSettings();
+}
+
+async function tambahTemplateDiskon() {
+  const nama = (document.getElementById('discountTemplateName')?.value || '').trim() || 'Template Diskon';
+  const minBelanja = Math.max(0, Number(document.getElementById('discountTemplateMin')?.value || 0));
+  const tipe = document.getElementById('discountTemplateType')?.value === 'nominal' ? 'nominal' : 'percent';
+  let nilai = Math.max(0, Number(document.getElementById('discountTemplateValue')?.value || 0));
+  if (tipe === 'percent') nilai = Math.min(nilai, 100);
+  if (nilai <= 0) { Utils.showToast('Nilai diskon harus lebih dari 0', 'warning'); return; }
+  const templates = [...(state.settings?.fitur?.diskonPengaturan?.templates || []), { id: 'dt_' + Date.now(), nama, minBelanja, tipe, nilai, aktif: true }];
+  try { await _saveDiscountTemplates(templates); Utils.showToast('Template diskon ditambahkan'); }
+  catch (e) { Utils.showToast(Utils.getFriendlyError(e, 'Gagal menambahkan template diskon. Silakan coba lagi.'), 'error'); }
+}
+
+async function editTemplateDiskon(index) {
+  const templates = [...(state.settings?.fitur?.diskonPengaturan?.templates || [])];
+  const template = templates[index];
+  if (!template) return;
+  const esc = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');
+  const result = await Utils.showModal({
+    title: 'Edit Diskon',
+    customClass: 'swal2-is-settings-compact',
+    content: `
+      <div class="form-group">
+        <label class="form-label">Nama template</label>
+        <input id="editDiscountTemplateName" class="form-input" value="${esc(template.nama || '')}">
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Minimal belanja</label>
+          <input id="editDiscountTemplateMin" class="form-input" type="number" min="0" value="${Number(template.minBelanja || 0)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipe</label>
+          <select id="editDiscountTemplateType" class="form-input">
+            <option value="percent" ${template.tipe !== 'nominal' ? 'selected' : ''}>Persen (%)</option>
+            <option value="nominal" ${template.tipe === 'nominal' ? 'selected' : ''}>Nominal (Rp)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nilai diskon</label>
+        <input id="editDiscountTemplateValue" class="form-input" type="number" min="0" value="${Number(template.nilai || 0)}">
+      </div>`,
+    buttons: [
+      { text: 'Batal', action: 'cancel', class: 'btn-secondary' },
+      { text: 'Simpan', action: 'save', class: 'btn-primary', onClick: () => {
+        window._editDiscountTemplate = {
+          nama: (document.getElementById('editDiscountTemplateName')?.value || '').trim(),
+          minBelanja: Math.max(0, Number(document.getElementById('editDiscountTemplateMin')?.value || 0)),
+          tipe: document.getElementById('editDiscountTemplateType')?.value === 'nominal' ? 'nominal' : 'percent',
+          nilai: Math.max(0, Number(document.getElementById('editDiscountTemplateValue')?.value || 0))
+        };
+      }}
+    ]
+  });
+  if (result !== 'save') return;
+  const data = window._editDiscountTemplate;
+  delete window._editDiscountTemplate;
+  if (!data.nama) { Utils.showToast('Nama template wajib diisi', 'warning'); return; }
+  if (data.nilai <= 0) { Utils.showToast('Nilai diskon harus lebih dari 0', 'warning'); return; }
+  if (data.tipe === 'percent') data.nilai = Math.min(data.nilai, 100);
+  templates[index] = { ...template, ...data };
+  try { await _saveDiscountTemplates(templates); Utils.showToast('Template diskon diperbarui'); }
+  catch (e) { Utils.showToast(Utils.getFriendlyError(e, 'Gagal mengubah template diskon. Silakan coba lagi.'), 'error'); }
+}
+
+async function toggleTemplateDiskon(index) {
+  const templates = [...(state.settings?.fitur?.diskonPengaturan?.templates || [])];
+  if (!templates[index]) return;
+  templates[index] = { ...templates[index], aktif: templates[index].aktif === false };
+  try { await _saveDiscountTemplates(templates); } catch (e) { Utils.showToast(Utils.getFriendlyError(e, 'Gagal mengubah template diskon. Silakan coba lagi.'), 'error'); }
+}
+
+async function hapusTemplateDiskon(index) {
+  const templates = [...(state.settings?.fitur?.diskonPengaturan?.templates || [])];
+  if (!templates[index]) return;
+  if (!await Utils.showConfirm('Hapus template diskon ini?')) return;
+  templates.splice(index, 1);
+  try { await _saveDiscountTemplates(templates); Utils.showToast('Template diskon dihapus'); } catch (e) { Utils.showToast(Utils.getFriendlyError(e, 'Gagal menghapus template diskon. Silakan coba lagi.'), 'error'); }
 }
 
 async function saveMejaSettings() {
@@ -413,7 +696,7 @@ async function saveMejaSettings() {
     };
     Utils.showToast("Pengaturan disimpan");
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -426,8 +709,17 @@ async function exportToPDFShift() {
   const transactions = state.transactions.filter(t => t.sessionId === state.currentSession.id);
   const totalTransaksi = transactions.length;
   const totalPenjualan = transactions.reduce((s, t) => s + t.total, 0);
-  const totalCash = transactions.reduce((s, t) => s + (t.cashAmount || (t.metodeBayar === 'tunai' ? t.total : 0)), 0);
-  const totalQRIS = transactions.reduce((s, t) => s + (t.qrisAmount || (t.metodeBayar === 'qris' ? t.total : 0)), 0);
+  const totalDiskon = transactions.reduce((s, t) => s + (t.discountAmount || 0), 0);
+  const totalHPP = transactions.reduce((s, t) => s + (t.items || []).reduce((x, i) => x + (Number(i.costPrice || 0) * (i.qty || 0)), 0), 0);
+  const labaKotor = totalPenjualan - totalHPP;
+  const totalCash = transactions.reduce((s, t) => {
+    const qris = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
+    return s + (t.metodeBayar === 'tunai' ? (t.total || 0) : Math.max(0, (t.total || 0) - qris));
+  }, 0);
+  const totalQRIS = transactions.reduce((s, t) => {
+    const qrisAmt = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
+    return s + qrisAmt;
+  }, 0);
   const totalPengeluaran = state.pengeluaran?.filter(p => p.sessionId === state.currentSession.id)?.reduce((s, p) => s + (p.nominal || 0), 0) || 0;
   const cashBersih = totalCash - totalPengeluaran;
   const pengeluaranList = state.pengeluaran?.filter(p => p.sessionId === state.currentSession.id) || [];
@@ -435,9 +727,13 @@ async function exportToPDFShift() {
   const produkCount = {};
   transactions.forEach(t => {
     t.items.forEach(i => {
-      if (!produkCount[i.name]) produkCount[i.name] = { qty: 0, total: 0 };
+      if (!produkCount[i.name]) produkCount[i.name] = { qty: 0, total: 0, hpp: 0, laba: 0 };
+      const sales = (i.price + (i.modifierTotal || 0)) * i.qty;
+      const hpp = Number(i.costPrice || 0) * i.qty;
       produkCount[i.name].qty += i.qty;
-      produkCount[i.name].total += i.price * i.qty;
+      produkCount[i.name].total += sales;
+      produkCount[i.name].hpp += hpp;
+      produkCount[i.name].laba += sales - hpp;
     });
   });
   const topProducts = Object.entries(produkCount).sort((a, b) => b[1].qty - a[1].qty);
@@ -449,6 +745,9 @@ async function exportToPDFShift() {
     subtitle: `Kasir: ${state.currentSession.kasir} | Dicetak: ${new Date().toLocaleString('id-ID')}`,
     totalTransaksi,
     totalPenjualan,
+    totalDiskon,
+    totalHPP,
+    labaKotor,
     totalCash,
     totalQRIS,
     totalPengeluaran,
@@ -526,7 +825,11 @@ async function generatePDF(data) {
       ['Total Transaksi', `${data.totalTransaksi} transaksi`],
       ['Total Cash', `Rp ${Utils.formatRupiah(data.totalCash)}`],
       ['Total Qris', `Rp ${Utils.formatRupiah(data.totalQRIS)}`],
+      ['Subtotal Penjualan', `Rp ${Utils.formatRupiah(data.totalPenjualan + data.totalDiskon)}`],
+      ['Total Diskon', `-Rp ${Utils.formatRupiah(data.totalDiskon)}`],
       ['Total Penjualan', `Rp ${Utils.formatRupiah(data.totalPenjualan)}`],
+      ['HPP', `Rp ${Utils.formatRupiah(data.totalHPP)}`],
+      ['Laba Kotor', `Rp ${Utils.formatRupiah(data.labaKotor)}`],
     ];
     if (data.totalPengeluaran > 0) {
       ringkasanBody.push(['Total Pengeluaran', `-Rp ${Utils.formatRupiah(data.totalPengeluaran)}`]);
@@ -541,12 +844,12 @@ async function generatePDF(data) {
         1: { halign: 'right' }
       },
       alternateRowStyles: { fillColor: [245, 247, 255] },
-      didParseCell(data) {
+      didParseCell(hookData) {
         if (data.totalPengeluaran > 0) {
-          if (data.row.index === ringkasanBody.length - 2) data.cell.styles.textColor = [220, 38, 38];
-          if (data.row.index === ringkasanBody.length - 1) {
-            data.cell.styles.textColor = [5, 150, 105];
-            data.cell.styles.fontStyle = 'bold';
+          if (hookData.row.index === ringkasanBody.length - 2) hookData.cell.styles.textColor = [220, 38, 38];
+          if (hookData.row.index === ringkasanBody.length - 1) {
+            hookData.cell.styles.textColor = [5, 150, 105];
+            hookData.cell.styles.fontStyle = 'bold';
           }
         }
       },
@@ -558,13 +861,15 @@ async function generatePDF(data) {
       const cw = PW - ML - MR;
       doc.autoTable(tableOpts({
         startY: y,
-        head: [['Nama Produk', 'Terjual', 'Total Penjualan']],
-        body: data.topProducts.map(([name, data]) => [name, `${data.qty} pcs`, `Rp ${Utils.formatRupiah(data.total)}`]),
+        head: [['Nama Produk', 'Terjual', 'Omzet', 'HPP', 'Laba Kotor']],
+        body: data.topProducts.map(([name, data]) => [name, `${data.qty} pcs`, `Rp ${Utils.formatRupiah(data.total)}`, `Rp ${Utils.formatRupiah(data.hpp)}`, `Rp ${Utils.formatRupiah(data.laba)}`]),
         headStyles: { fillColor: [30, 58, 138], fontStyle: 'bold', fontSize: fontSize(8.5) },
         columnStyles: {
-          0: { cellWidth: cw * 0.55 },
-          1: { halign: 'center', cellWidth: cw * 0.18 },
-          2: { halign: 'right', cellWidth: cw * 0.27 }
+          0: { cellWidth: cw * 0.40 },
+          1: { halign: 'center', cellWidth: cw * 0.13 },
+          2: { halign: 'right', cellWidth: cw * 0.17 },
+          3: { halign: 'right', cellWidth: cw * 0.15 },
+          4: { halign: 'right', cellWidth: cw * 0.15 }
         },
         theme: 'striped',
       }));
@@ -615,83 +920,155 @@ async function generatePDF(data) {
     doc.save(data.filename);
     Utils.showToast('PDF berhasil diekspor');
   } catch (error) {
-    Utils.showToast('Gagal: ' + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
+}
+
+function updateImportExcelFileName(input) {
+  const label = document.getElementById('importExcelFileName');
+  if (!label) return;
+  label.textContent = input?.files?.[0]?.name || 'Tidak ada file yang dipilih';
 }
 
 async function importFromExcel() {
   const file = document.getElementById('importExcelFile')?.files[0];
   if (!file) {
-    Utils.showToast("Pilih file Excel", 'error');
+    Utils.showToast('Pilih file Excel', 'error');
     return;
   }
-  if (!await Utils.showConfirm("Import akan menimpa data menu & bahan. Lanjutkan?")) return;
   try {
-    const data = await file.arrayBuffer();
-    const wb = XLSX.read(data);
-    const menuSheet = wb.Sheets["Menu"];
-    const bahanSheet = wb.Sheets["Bahan"];
-    let importCount = 0;
-    if (menuSheet) {
-      const menus = XLSX.utils.sheet_to_json(menuSheet);
-      const oldMenus = await dbCloud.collection("menus").get();
-      const batch = dbCloud.batch();
-      oldMenus.docs.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
-      for (const m of menus) {
-        await dbCloud.collection("menus").add({
-          name: m['Nama Menu'] || 'Unknown',
-          price: parseInt(m['Harga']) || 0,
-          categoryId: null,
-          useStock: m['Gunakan Stok'] === 'TRUE',
-          stock: parseInt(m['Stok']) || 0,
-          active: true,
-          createdAt: new Date()
-        });
-        importCount++;
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { cellDates: true });
+    const menuSheet = wb.Sheets.Menu;
+    const bahanSheet = wb.Sheets.Bahan;
+    const kategoriSheet = wb.Sheets.Kategori;
+    const menus = menuSheet ? XLSX.utils.sheet_to_json(menuSheet, { defval: '' }) : [];
+    const bahans = bahanSheet ? XLSX.utils.sheet_to_json(bahanSheet, { defval: '' }) : [];
+    const kategoriRows = kategoriSheet ? XLSX.utils.sheet_to_json(kategoriSheet, { defval: '' }) : [];
+
+    if (!menuSheet && !bahanSheet) {
+      Utils.showToast('Sheet Menu atau Bahan tidak ditemukan', 'error');
+      return;
+    }
+    if (menus.some(m => !String(m['Nama Menu'] || '').trim())) {
+      Utils.showToast('Ada menu tanpa Nama Menu', 'error');
+      return;
+    }
+    if (bahans.some(b => !String(b['Nama Bahan'] || '').trim())) {
+      Utils.showToast('Ada bahan tanpa Nama Bahan', 'error');
+      return;
+    }
+
+    const confirm = await Utils.showConfirm('Import akan mengganti data menu & bahan. Kategori yang dipakai akan dibuat jika belum ada. Lanjutkan?');
+    if (!confirm) return;
+
+    const toBool = value => {
+      const normalized = String(value ?? '').trim().toLowerCase();
+      return ['true', '1', 'ya', 'yes', 'on'].includes(normalized);
+    };
+    const numberValue = (value, fallback = 0) => {
+      const n = Number(String(value ?? '').replace(/[^0-9,.-]/g, '').replace(/\.(?=.*\.)/g, '').replace(',', '.'));
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    const existingCategories = await dbCloud.collection('categories').get();
+    const categoryMap = new Map();
+    existingCategories.forEach(doc => categoryMap.set(String(doc.data().name || '').trim().toLowerCase(), doc.id));
+
+    for (const row of kategoriRows) {
+      const name = String(row['Nama Kategori'] || row['Kategori'] || '').trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!categoryMap.has(key)) {
+        const ref = await dbCloud.collection('categories').add({ name, system: false, createdAt: new Date() });
+        categoryMap.set(key, ref.id);
       }
     }
-    if (bahanSheet) {
-      const bahan = XLSX.utils.sheet_to_json(bahanSheet);
-      const oldBahan = await dbCloud.collection("raw_materials").get();
-      const batch = dbCloud.batch();
-      oldBahan.docs.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
-      for (const b of bahan) {
-        await dbCloud.collection("raw_materials").add({
-          name: b['Nama Bahan'] || 'Unknown',
-          satuan: b['Satuan'] || 'pcs',
-          stock: parseFloat(b['Stok Awal']) || 0,
-          minStock: parseInt(b['Minimal Stok']) || 5,
-          createdAt: new Date()
-        });
-        importCount++;
+
+    const menuCategoryNames = [...new Set(menus.map(m => String(m['Kategori'] || '').trim()).filter(Boolean))];
+    for (const name of menuCategoryNames) {
+      const key = name.toLowerCase();
+      if (!categoryMap.has(key)) {
+        const ref = await dbCloud.collection('categories').add({ name, system: false, createdAt: new Date() });
+        categoryMap.set(key, ref.id);
       }
     }
-    Utils.showToast(`Import berhasil (${importCount} data)`);
-    setTimeout(() => location.reload(), 2000);
+
+    const deleteCollection = async name => {
+      const snap = await dbCloud.collection(name).get();
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const batch = dbCloud.batch();
+        snap.docs.slice(i, i + 400).forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+    };
+    const addInBatches = async (name, rows) => {
+      for (let i = 0; i < rows.length; i += 400) {
+        const batch = dbCloud.batch();
+        rows.slice(i, i + 400).forEach(row => batch.set(dbCloud.collection(name).doc(), row));
+        await batch.commit();
+      }
+    };
+
+    const menuDocs = menus.map(m => {
+      const categoryName = String(m['Kategori'] || '').trim();
+      const categoryId = categoryMap.get(categoryName.toLowerCase()) || null;
+      const price = numberValue(m['Harga Jual'] ?? m['Harga']);
+      return {
+        name: String(m['Nama Menu']).trim(),
+        price,
+        salePrice: price,
+        costPrice: numberValue(m['Harga Modal']),
+        categoryId,
+        useStock: toBool(m['Gunakan Stok']),
+        stock: Math.max(0, numberValue(m['Stok'])),
+        active: true,
+        createdAt: new Date()
+      };
+    });
+
+    const bahanDocs = bahans.map(b => ({
+      name: String(b['Nama Bahan']).trim(),
+      satuan: String(b['Satuan'] || 'pcs').trim() || 'pcs',
+      stock: Math.max(0, numberValue(b['Stok Awal'])),
+      minStock: Math.max(0, numberValue(b['Minimal Stok'], 5)),
+      createdAt: new Date()
+    }));
+
+    if (menus.length) await deleteCollection('menus');
+    if (bahans.length) await deleteCollection('raw_materials');
+    if (menuDocs.length) await addInBatches('menus', menuDocs);
+    if (bahanDocs.length) await addInBatches('raw_materials', bahanDocs);
+
+    Utils.showToast(`Import berhasil: ${menuDocs.length} menu, ${bahanDocs.length} bahan`);
+    setTimeout(() => location.reload(), 1200);
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error, 'Gagal mengimpor file. Periksa file lalu coba lagi.'), 'error');
   }
 }
 
 function downloadTemplateExcel() {
   try {
     const wb = XLSX.utils.book_new();
+    const kategoriTemplate = [
+      { 'Nama Kategori': 'Makanan' },
+      { 'Nama Kategori': 'Minuman' }
+    ];
     const menuTemplate = [
-      { 'Nama Menu': 'Nasi Goreng', 'Harga': 15000, 'Kategori': 'Makanan', 'Gunakan Stok': 'TRUE', 'Stok': 50 },
-      { 'Nama Menu': 'Es Teh', 'Harga': 5000, 'Kategori': 'Minuman', 'Gunakan Stok': 'FALSE', 'Stok': 0 }
+      { 'Nama Menu': 'Nasi Goreng', 'Harga Modal': 10000, 'Harga Jual': 15000, 'Kategori': 'Makanan', 'Gunakan Stok': 'TRUE', 'Stok': 50 },
+      { 'Nama Menu': 'Es Teh', 'Harga Modal': 2500, 'Harga Jual': 5000, 'Kategori': 'Minuman', 'Gunakan Stok': 'FALSE', 'Stok': 0 }
     ];
     const bahanTemplate = [
       { 'Nama Bahan': 'Tepung', 'Satuan': 'kg', 'Stok Awal': 25, 'Minimal Stok': 5 },
       { 'Nama Bahan': 'Telur', 'Satuan': 'pcs', 'Stok Awal': 100, 'Minimal Stok': 20 }
     ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(menuTemplate), "Menu");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bahanTemplate), "Bahan");
-    XLSX.writeFile(wb, "template_import_inikasir.xlsx");
-    Utils.showToast("Template didownload");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kategoriTemplate), 'Kategori');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(menuTemplate), 'Menu');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bahanTemplate), 'Bahan');
+    XLSX.writeFile(wb, 'template_import_inikasir.xlsx');
+    Utils.showToast('Template didownload');
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -774,7 +1151,7 @@ async function resetRiwayatOnly() {
     Utils.showToast("Riwayat berhasil direset!");
     setTimeout(() => renderKasir(), 1000);
   } catch (error) {
-    Utils.showToast("Gagal reset: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error, 'Gagal mereset data. Silakan coba lagi.'), 'error');
   }
 }
 
@@ -860,7 +1237,7 @@ async function resetData() {
     Utils.showToast("DATABASE berhasil direset!");
     setTimeout(() => window.location.reload(), 2000);
   } catch (error) {
-    Utils.showToast("Gagal reset total: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error, 'Gagal mereset database. Silakan coba lagi.'), 'error');
   }
 }
 
@@ -881,16 +1258,40 @@ async function editKasir(index) {
   const kData = kasirs[index];
   if (!kData) return;
 
-  const newName = await Utils.showPrompt(`Ubah Nama Kasir "${kData.nama}"`, kData.nama);
-  if (!newName || newName.trim() === '' || newName === kData.nama) return;
+  const esc = value => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;');
 
-  if (kasirs.find((k, i) => i !== index && k.nama.toLowerCase() === newName.trim().toLowerCase())) {
+  const result = await Utils.showModal({
+    title: 'Edit Kasir',
+    customClass: 'swal2-is-settings-compact',
+    content: `
+      <div class="form-group settings-modal-single-field">
+        <label class="form-label">Nama Kasir</label>
+        <input id="editKasirNama" class="form-input" type="text" value="${esc(kData.nama || '')}" autocomplete="off">
+      </div>`,
+    buttons: [
+      { text: 'Batal', action: 'cancel', class: 'btn-secondary' },
+      { text: 'Simpan', action: 'save', class: 'btn-primary', onClick: () => {
+        window._editKasirNama = document.getElementById('editKasirNama')?.value || '';
+      }}
+    ]
+  });
+
+  if (result !== 'save') return;
+  const newName = String(window._editKasirNama || '').trim();
+  delete window._editKasirNama;
+  if (!newName || newName === kData.nama) return;
+
+  if (kasirs.find((k, i) => i !== index && String(k.nama || '').toLowerCase() === newName.toLowerCase())) {
     Utils.showToast("Nama kasir tersebut sudah ada!", 'warning');
     return;
   }
 
   const newArr = [...kasirs];
-  newArr[index].nama = newName.trim();
+  newArr[index] = { ...newArr[index], nama: newName };
   _saveSettingsScroll();
   await saveKasirSettings(newArr);
   Utils.showToast("Nama kasir diperbarui");
@@ -902,6 +1303,7 @@ async function editMeja(id) {
 
   const result = await Utils.showModal({
     title: 'Edit Meja',
+    customClass: 'swal2-is-settings-compact',
     content: `
           <div class="form-group">
             <label class="form-label">Nomor Meja</label>
@@ -937,11 +1339,11 @@ async function editMeja(id) {
         nama: nm || meja.nama
       });
       const stItem = state.tables.find(m => m.id === id);
-      if (stItem) { stItem.nomor = nr; stItem.nama = nm; }
+      if (stItem) { stItem.nomor = nr || meja.nomor; stItem.nama = nm || meja.nama; }
       Utils.showToast("Meja berhasil diupdate");
       renderSettings();
     } catch (e) {
-      Utils.showToast("Gagal update meja: " + e.message, 'error');
+      Utils.showToast(Utils.getFriendlyError(e, 'Gagal memperbarui meja. Silakan coba lagi.'), 'error');
     }
   }
 }
@@ -952,7 +1354,7 @@ async function saveKasirSettings(kasirs) {
     state.settings.kasirs = kasirs;
     renderSettings();
   } catch (e) {
-    Utils.showToast("Gagal simpan kasir: " + e.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(e, 'Gagal menyimpan kasir. Silakan coba lagi.'), 'error');
   }
 }
 
@@ -991,6 +1393,11 @@ window.renderSettings = renderSettings;
 window.switchSettingsTab = switchSettingsTab;
 window.saveTokoSettings = saveTokoSettings;
 window.saveStrukSettings = saveStrukSettings;
+window.saveFiturSettings = saveFiturSettings;
+window.tambahTemplateDiskon = tambahTemplateDiskon;
+window.toggleTemplateDiskon = toggleTemplateDiskon;
+window.editTemplateDiskon = editTemplateDiskon;
+window.hapusTemplateDiskon = hapusTemplateDiskon;
 window.saveMejaSettings = saveMejaSettings;
 window.tambahMeja = tambahMeja;
 window.toggleMejaStatus = toggleMejaStatus;
@@ -1003,6 +1410,7 @@ window.hapusKasir = hapusKasir;
 window.sortKasir = sortKasir;
 window.editKasir = editKasir;
 window.exportToPDFShift = exportToPDFShift;
+window.updateImportExcelFileName = updateImportExcelFileName;
 window.importFromExcel = importFromExcel;
 window.downloadTemplateExcel = downloadTemplateExcel;
 window.resetRiwayatOnly = resetRiwayatOnly;

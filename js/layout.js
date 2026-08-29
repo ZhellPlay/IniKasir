@@ -189,9 +189,14 @@ window.Layout = {
         <div class="header-right">
           ${window.state.currentSession ? `
             <div class="header-session-info">
-              <span class="header-email">
-                ${window.state.currentSession?.kasir || window.state.user?.email}
-              </span>
+              ${window.state.currentView === 'kasir' ? `
+                <div class="header-cashier-name" title="Kasir yang bertugas">
+                  <i class="fas fa-user"></i>
+                  <span>${window.state.currentSession?.kasir || window.state.user?.email || '-'}<small>Kasir</small></span>
+                </div>` : `
+                <span class="header-email">
+                  ${window.state.currentSession?.kasir || window.state.user?.email}
+                </span>`}
               <div class="header-shift-badge">
                 <span class="header-shift-dot"></span>
                 <span>Shift ${window.state.currentSession.shift}</span>
@@ -250,8 +255,9 @@ window.showOpenBillList = function () {
       return `
           <div class="open-bill-list-item" onclick="window._loadOpenBillFromList('${ob.id}')">
             <div class="open-bill-list-left">
+              <div class="open-bill-list-customer"><i class="fas fa-user"></i> ${ob.namaPelanggan || 'Tanpa nama'}</div>
               <div class="open-bill-list-meja">
-                <i class="fas fa-chair"></i> ${ob.mejaNomor} - ${ob.mejaNama}
+                <i class="fas fa-chair"></i> ${ob.mejaNomor ? `Meja ${ob.mejaNomor} - ${ob.mejaNama || ''}` : 'Take Away'}
               </div>
               <div class="open-bill-list-meta">
                 ${ob.items?.length || 0} item · ${waktu}
@@ -300,18 +306,16 @@ window._loadOpenBillFromList = function (obId) {
   const ob = (state.openBills || []).find(o => o.id === obId);
   if (!ob) return;
   document.getElementById('modal-open-bill-list')?.remove();
-  window._loadOpenBill(ob, { id: ob.mejaId, nomor: ob.mejaNomor, nama: ob.mejaNama });
+  window._loadOpenBill(ob, ob.mejaId ? { id: ob.mejaId, nomor: ob.mejaNomor, nama: ob.mejaNama } : null);
   state.currentView = 'kasir';
   window.renderKasir?.();
 };
 
 window._goPayOpenBill = function (obId) {
   const ob = (state.openBills || []).find(o => o.id === obId);
+  if (!ob) return;
   document.getElementById('modal-open-bill-list')?.remove();
-  if (ob) window._loadOpenBill(ob, { id: ob.mejaId, nomor: ob.mejaNomor, nama: ob.mejaNama });
-  state.currentView = 'kasir';
-  window.renderKasir?.();
-  setTimeout(() => window.showPaymentPanel(ob.total), 300);
+  window.showOpenBillPaymentModal?.(ob);
 };
 
 window._printOpenBill = async function (btn, obId) {

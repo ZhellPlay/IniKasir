@@ -1,6 +1,51 @@
+function isMejaFeatureEnabled() {
+  const f = state.settings?.fitur;
+  return f?.meja !== undefined ? f.meja !== false : state.settings?.meja?.aktif !== false;
+}
+
+function isDiscountFeatureEnabled() {
+  return state.settings?.fitur?.diskon !== false;
+}
+
+function getDiscountConfig() {
+  return state.settings?.fitur?.diskonPengaturan || { mode: 'both', templates: [] };
+}
+
+function getEligibleDiscountTemplates(subtotal = getCartSubtotal()) {
+  const templates = Array.isArray(getDiscountConfig().templates) ? getDiscountConfig().templates : [];
+  return templates.filter(t => t.aktif !== false && Number(t.minBelanja || 0) <= subtotal)
+    .sort((a, b) => Number(b.minBelanja || 0) - Number(a.minBelanja || 0));
+}
+
+function syncAutoDiscount() {
+  if (!isDiscountFeatureEnabled()) return;
+  const cfg = getDiscountConfig();
+  if (!['auto','both'].includes(cfg.mode)) return;
+  if (state.discountSource !== 'auto' && cfg.mode === 'both') return;
+  const subtotal = getCartSubtotal();
+  const eligible = getEligibleDiscountTemplates(subtotal);
+  const selected = eligible.find(t => t.id === state.discountTemplateId);
+  const template = selected || eligible[0];
+  if (!template) {
+    state.discountSource = 'auto';
+    state.discountTemplateId = null;
+    state.discountValue = 0;
+    state.discountMode = 'percent';
+    window._discountDraftValue = 0;
+    return;
+  }
+  state.discountSource = 'auto';
+  state.discountTemplateId = template.id;
+  state.discountMode = template.tipe === 'nominal' ? 'nominal' : 'percent';
+  state.discountValue = Number(template.nilai || 0);
+  window._discountDraftValue = state.discountValue;
+}
+
 function renderKasir() {
   state.currentView = "kasir";
   if (!state.currentSession) { renderNoSession(); return; }
+
+  syncAutoDiscount();
 
   const categoryContainer = document.getElementById('category-scroll-container');
   if (categoryContainer) state.lastCategoryScroll = categoryContainer.scrollLeft;
@@ -191,8 +236,44 @@ function renderCartItems() {
   }).join('');
 }
 
+function renderDiscountBox() {
+  const cfg = getDiscountConfig();
+  const mode = cfg.mode || 'both';
+  const templates = Array.isArray(cfg.templates) ? cfg.templates : [];
+  const eligible = getEligibleDiscountTemplates();
+  const source = state.discountSource || 'manual';
+  const canAuto = mode === 'auto' || mode === 'both';
+  const canManual = mode === 'manual' || mode === 'both';
+  return `<div class="discount-box">
+    <div class="discount-title"><span><i class="fas fa-tags"></i> Diskon</span>${getDiscountAmount() > 0 ? `<button class="btn-icon-sm" onclick="clearDiscount()" title="Hapus diskon"><i class="fas fa-times"></i></button>` : ''}</div>
+    ${mode === 'both' ? `<div class="discount-source-tabs">
+      <button class="discount-source-btn ${source === 'auto' ? 'active' : ''}" onclick="setDiscountSource('auto')"><i class="fas fa-magic"></i> Otomatis</button>
+      <button class="discount-source-btn ${source === 'manual' ? 'active' : ''}" onclick="setDiscountSource('manual')"><i class="fas fa-hand-pointer"></i> Manual</button>
+    </div>` : ''}
+    ${canAuto && source === 'auto' ? `
+      <div class="discount-auto-wrap">
+        <select class="form-input discount-template-select" onchange="window.selectDiscountTemplate(this.value)" ${eligible.length ? '' : 'disabled'}>
+          ${eligible.length ? eligible.map(t => `<option value="${t.id}" ${state.discountTemplateId === t.id ? 'selected' : ''}>${t.nama || 'Template'} · Min Rp ${Utils.formatRupiah(Number(t.minBelanja || 0))} · ${t.tipe === 'nominal' ? 'Rp ' + Utils.formatRupiah(Number(t.nilai || 0)) : Number(t.nilai || 0) + '%'}</option>`).join('') : '<option selected>Tidak ada promo yang memenuhi syarat</option>'}
+        </select>
+        <small class="text-muted">${eligible.length > 1 ? 'Pilih promo yang ingin digunakan.' : eligible.length === 1 ? 'Promo tersedia berdasarkan subtotal saat ini.' : 'Naikkan subtotal untuk memenuhi minimal belanja promo.'}</small>
+      </div>` : ''}
+    ${canManual && source === 'manual' ? `
+      <div class="discount-controls">
+        <select class="form-input discount-mode-select" onchange="setDiscountMode(this.value)">
+          <option value="percent" ${state.discountMode === 'percent' ? 'selected' : ''}>Persen (%)</option>
+          <option value="nominal" ${state.discountMode === 'nominal' ? 'selected' : ''}>Nominal (Rp)</option>
+        </select>
+        <input type="number" min="0" ${state.discountMode === 'percent' ? 'max="100" step="0.01"' : ''} class="form-input discount-value-input" value="${window._discountDraftValue ?? state.discountValue ?? 0}" placeholder="0" oninput="window._discountDraftValue=this.value" onkeydown="if(event.key==='Enter')applyDiscount(this.value)">
+        <button class="btn btn-secondary btn-sm" onclick="applyDiscount(document.querySelector('.discount-value-input')?.value)">Terapkan</button>
+      </div>` : ''}
+    ${getDiscountAmount() > 0 ? `<div class="discount-applied">- Rp ${Utils.formatRupiah(getDiscountAmount())}${source === 'auto' ? ' · Otomatis' : ' · Manual'}</div>` : ''}
+  </div>`;
+}
+
 function renderCartFooter() {
   const hasOpenBill = !!window._currentOpenBillId;
+  const mejaEnabled = isMejaFeatureEnabled();
+  const discountEnabled = isDiscountFeatureEnabled();
   const mejaLabel = state.selectedTable
     ? `${state.selectedTable.nomor} - ${state.selectedTable.nama}`
     : 'Pilih meja';
@@ -200,6 +281,7 @@ function renderCartFooter() {
   const cartEmpty = state.cart.length === 0;
 
   return `
+    ${mejaEnabled ? `
     <div class="table-info mb-4">
       <div>
         <i class="fas fa-chair"></i>
@@ -207,20 +289,21 @@ function renderCartFooter() {
         ${hasOpenBill ? `<span class="badge badge-warning ml-1">Open Bill</span>` : ''}
       </div>
       <button class="btn btn-secondary btn-sm" onclick="pilihMeja()">Ganti</button>
-    </div>
-    <div class="total-row">
-      <span>Total</span>
-      <span class="total-amount">Rp ${Utils.formatRupiah(total)}</span>
+    </div>` : ''}
+    <div class="cart-summary">
+      <div class="cart-summary-row"><span>Subtotal</span><span>Rp ${Utils.formatRupiah(getCartSubtotal())}</span></div>
+      ${discountEnabled ? renderDiscountBox() : ''}
+      <div class="total-row"><span>Total</span><span class="total-amount">Rp ${Utils.formatRupiah(total)}</span></div>
     </div>
     <div class="cart-footer-actions">
-      ${!cartEmpty && state.selectedTable ? `
+      ${!cartEmpty ? `
         <button class="btn btn-secondary btn-block" onclick="simpanKeOpenBill()">
-          <i class="fas fa-save"></i> ${hasOpenBill ? 'Update Open Bill' : 'Simpan ke Meja'}
+          <i class="fas fa-receipt"></i> ${hasOpenBill ? 'Update Open Bill' : 'Simpan Open Bill'}
         </button>
       ` : ''}
       <button class="btn btn-primary btn-block btn-large"
         onclick="showPaymentModal()"
-        ${(!state.selectedTable || cartEmpty) ? 'disabled' : ''}>
+        ${(cartEmpty || (mejaEnabled && !state.selectedTable && !hasOpenBill)) ? 'disabled' : ''}>
         <i class="fas fa-credit-card"></i> BAYAR (Rp ${Utils.formatRupiah(total)})
       </button>
     </div>
@@ -288,6 +371,71 @@ function cekKetersediaanBahan(menu, qty = 1) {
 function _getItemModifierTotal(item) {
   return (item.modifiers || []).reduce((s, m) => s + (m.price || 0), 0);
 }
+
+function getCartSubtotal() {
+  return state.cart.reduce((s, i) => s + ((i.price + _getItemModifierTotal(i)) * i.qty), 0);
+}
+
+function getDiscountAmount(subtotal = getCartSubtotal()) {
+  if (!isDiscountFeatureEnabled() && !window._currentOpenBillId) return 0;
+  const value = Math.max(0, Number(state.discountValue) || 0);
+  if (!subtotal || !value) return 0;
+  if (state.discountMode === 'nominal') return Math.min(Math.round(value), subtotal);
+  return Math.min(Math.round(subtotal * Math.min(value, 100) / 100), subtotal);
+}
+
+function getTotal() {
+  return Math.max(0, getCartSubtotal() - getDiscountAmount());
+}
+
+window.setDiscountSource = function(source) {
+  const cfg = getDiscountConfig();
+  if (source === 'auto' && cfg.mode === 'manual') source = 'manual';
+  if (source === 'manual' && cfg.mode === 'auto') source = 'auto';
+  state.discountSource = source === 'auto' ? 'auto' : 'manual';
+  if (state.discountSource === 'auto') syncAutoDiscount();
+  else { state.discountTemplateId = null; state.discountValue = 0; state.discountMode = 'percent'; window._discountDraftValue = 0; }
+  renderKasir();
+};
+
+window.selectDiscountTemplate = function(id) {
+  const template = (getDiscountConfig().templates || []).find(t => t.id === id && t.aktif !== false);
+  if (!template) { syncAutoDiscount(); renderKasir(); return; }
+  if (getCartSubtotal() < Number(template.minBelanja || 0)) { Utils.showToast('Minimal belanja belum terpenuhi', 'warning'); syncAutoDiscount(); renderKasir(); return; }
+  state.discountSource = 'auto';
+  state.discountTemplateId = template.id;
+  state.discountMode = template.tipe === 'nominal' ? 'nominal' : 'percent';
+  state.discountValue = Number(template.nilai || 0);
+  window._discountDraftValue = state.discountValue;
+  renderKasir();
+};
+
+window.applyDiscount = function(value) {
+  let v = Number(value);
+  if (!Number.isFinite(v) || v < 0) v = 0;
+  if (state.discountMode === 'percent') v = Math.min(v, 100);
+  state.discountSource = 'manual';
+  state.discountTemplateId = null;
+  state.discountValue = v;
+  window._discountDraftValue = v;
+  renderKasir();
+};
+
+window.setDiscountMode = function(mode) {
+  state.discountSource = 'manual';
+  state.discountTemplateId = null;
+  state.discountMode = mode === 'nominal' ? 'nominal' : 'percent';
+  window._discountDraftValue = state.discountValue || 0;
+  renderKasir();
+};
+
+window.clearDiscount = function() {
+  state.discountSource = 'manual';
+  state.discountTemplateId = null;
+  state.discountValue = 0;
+  window._discountDraftValue = 0;
+  renderKasir();
+};
 
 function _genCartId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
@@ -472,9 +620,6 @@ function updateCartNotes(cartItemId, value) {
   if (item) item.notes = value;
 }
 
-function getTotal() {
-  return state.cart.reduce((s, i) => s + ((i.price + _getItemModifierTotal(i)) * i.qty), 0);
-}
 
 function setPaymentMethod(method) {
   state.selectedPaymentMethod = method;
@@ -490,26 +635,18 @@ async function pilihMeja() {
     return nc !== 0 ? nc : String(a.nomor).localeCompare(String(b.nomor), undefined, { numeric: true, sensitivity: 'base' });
   });
 
-  const openBillByMeja = {};
-  (state.openBills || []).forEach(ob => { openBillByMeja[ob.mejaId] = ob; });
-
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.innerHTML = `
-    <div class="modal">
+    <div class="modal modal-pilih-meja">
       <h3><i class="fas fa-chair"></i> Pilih Meja</h3>
       <div class="table-grid">
-        ${tables.map(meja => {
-    const hasOpenBill = !!openBillByMeja[meja.id];
-    return `
-            <button class="table-btn ${hasOpenBill ? 'table-btn-occupied' : ''}"
-              data-id="${meja.id}" data-nomor="${meja.nomor}" data-nama="${meja.nama}">
-              <div class="table-number">${meja.nomor}</div>
-              <div class="table-name text-bold-md mt-1 color-primary">${meja.nama}</div>
-              ${hasOpenBill ? `<div class="table-open-bill-badge"><i class="fas fa-receipt"></i> Open Bill</div>` : ''}
-            </button>
-          `;
-  }).join('')}
+        ${tables.length ? tables.map(meja => `
+          <button class="table-btn" data-id="${meja.id}" data-nomor="${meja.nomor}" data-nama="${meja.nama}">
+            <div class="table-number">${meja.nomor}</div>
+            <div class="table-name text-bold-md mt-1 color-primary">${meja.nama}</div>
+          </button>
+        `).join('') : '<div class="empty-state"><i class="fas fa-chair"></i><p>Belum ada meja aktif</p></div>'}
       </div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Batal</button>
@@ -520,39 +657,14 @@ async function pilihMeja() {
   document.body.appendChild(modal);
 
   modal.querySelectorAll('.table-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.id;
-      const nomor = btn.dataset.nomor;
-      const nama = btn.dataset.nama;
+    btn.addEventListener('click', () => {
+      state.selectedTable = {
+        id: btn.dataset.id,
+        nomor: btn.dataset.nomor,
+        nama: btn.dataset.nama
+      };
       modal.remove();
-
-      const openBill = openBillByMeja[id];
-      if (openBill) {
-        const result = await Swal.fire({
-          title: `Meja ${nomor} - Ada Open Bill`,
-          text: `${openBill.items?.length || 0} item · Rp ${Utils.formatRupiah(openBill.total || 0)}`,
-          icon: 'question',
-          showDenyButton: true,
-          showCancelButton: true,
-          confirmButtonText: 'Lanjutkan Order',
-          denyButtonText: 'Bayar Sekarang',
-          cancelButtonText: 'Pilih Meja Lain',
-          customClass: { popup: 'swal2-is-konfirmasi' }
-        });
-
-        if (result.isConfirmed) {
-          _loadOpenBill(openBill, { id, nomor, nama });
-        } else if (result.isDenied) {
-          state.selectedTable = { id, nomor, nama };
-          _loadOpenBill(openBill, { id, nomor, nama });
-          setTimeout(() => showPaymentModal(), 100);
-        }
-        return;
-      }
-
-      state.selectedTable = { id, nomor, nama };
-      window._currentOpenBillId = null;
-      Utils.showToast(`Meja ${nomor} - ${nama} dipilih`, 'success');
+      Utils.showToast(`Meja ${btn.dataset.nomor} - ${btn.dataset.nama} dipilih`, 'success');
       renderKasir();
     });
   });
@@ -562,25 +674,78 @@ function _loadOpenBill(openBill, meja) {
   state.selectedTable = meja;
   state.cart = (openBill.items || []).map(i => ({
     ...i,
+    price: i.price ?? i.salePrice ?? 0,
+    salePrice: i.salePrice ?? i.price ?? 0,
+    costPrice: i.costPrice ?? 0,
     cartItemId: i.cartItemId || _genCartId()
   }));
+  state.discountMode = openBill.discountType || 'percent';
+  state.discountValue = Number(openBill.discountValue) || 0;
+  state.discountSource = openBill.discountSource || 'manual';
+  state.discountTemplateId = openBill.discountTemplateId || null;
+  window._discountDraftValue = state.discountValue;
   window._currentOpenBillId = openBill.id;
   Utils.showToast('Open bill dimuat', 'success');
   renderKasir();
 }
 
 async function simpanKeOpenBill() {
-  if (!state.selectedTable) { Utils.showToast('Pilih meja dulu!', 'warning'); return; }
   if (state.cart.length === 0) { Utils.showToast('Keranjang kosong!', 'warning'); return; }
 
+  const mejaAktif = isMejaFeatureEnabled();
+  const mejaOptions = mejaAktif
+    ? `<select id="open-bill-table-input" class="swal2-select" required><option value="">Pilih meja</option>${state.tables.filter(t => t.aktif !== false).sort((a, b) => String(a.nomor).localeCompare(String(b.nomor), undefined, { numeric: true })).map(t => `<option value="${t.id}" ${state.selectedTable?.id === t.id ? 'selected' : ''}>${t.nomor} - ${t.nama}</option>`).join('')}</select>`
+    : '';
+  const currentBill = window._currentOpenBillId ? (state.openBills || []).find(ob => ob.id === window._currentOpenBillId) : null;
+
+  const result = await Swal.fire({
+    title: currentBill ? 'Edit Open Bill' : 'Simpan Open Bill',
+    html: `
+      <div class="open-bill-form">
+        <label class="swal2-input-label">Nama pelanggan <span class="text-danger">*</span></label>
+        <input id="open-bill-name-input" class="swal2-input" value="${String(currentBill?.namaPelanggan || '').replace(/"/g, '&quot;')}" placeholder="Contoh: Budi">
+        ${mejaAktif ? `<label class="swal2-input-label">Meja <span class="text-danger">*</span></label>${mejaOptions}` : ''}
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: currentBill ? 'Simpan' : 'Simpan Open Bill',
+    cancelButtonText: 'Batal',
+    focusConfirm: false,
+    customClass: { popup: 'swal2-is-medium' },
+    preConfirm: () => {
+      const nama = String(document.getElementById('open-bill-name-input')?.value || '').trim();
+      if (!nama) {
+        Swal.showValidationMessage('Nama pelanggan wajib diisi');
+        return false;
+      }
+      const mejaId = document.getElementById('open-bill-table-input')?.value || '';
+      if (mejaAktif && !mejaId) {
+        Swal.showValidationMessage('Meja wajib dipilih');
+        return false;
+      }
+      const meja = mejaAktif ? (state.tables.find(t => t.id === mejaId) || null) : null;
+      return { namaPelanggan: nama, meja };
+    }
+  });
+
+  if (!result.isConfirmed) return;
+
+  const { namaPelanggan, meja } = result.value;
   const total = getTotal();
   const data = {
-    mejaId: state.selectedTable.id,
-    mejaNama: state.selectedTable.nama,
-    mejaNomor: state.selectedTable.nomor,
+    namaPelanggan,
+    mejaId: meja?.id || null,
+    mejaNama: meja?.nama || null,
+    mejaNomor: meja?.nomor || null,
     sessionId: state.currentSession.id,
     kasir: state.user.email,
     items: state.cart,
+    subtotal: getCartSubtotal(),
+    discountType: state.discountMode,
+    discountValue: Number(state.discountValue) || 0,
+    discountSource: state.discountSource || 'manual',
+    discountTemplateId: state.discountTemplateId || null,
+    discountAmount: getDiscountAmount(),
     total,
     status: 'open',
     updatedAt: new Date()
@@ -594,20 +759,25 @@ async function simpanKeOpenBill() {
       data.createdAt = new Date();
       const ref = await dbCloud.collection('openBills').add(data);
       window._currentOpenBillId = ref.id;
-      Utils.showToast('Pesanan disimpan ke meja', 'success');
+      Utils.showToast('Open bill disimpan', 'success');
     }
     state.cart = [];
     state.selectedTable = null;
+    state.discountMode = 'percent';
+    state.discountValue = 0;
+    state.discountSource = 'manual';
+    state.discountTemplateId = null;
+    window._discountDraftValue = 0;
     window._currentOpenBillId = null;
     renderKasir();
   } catch (err) {
-    Utils.showToast('Gagal simpan: ' + err.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(err, 'Gagal menyimpan open bill. Silakan coba lagi.'), 'error');
   }
 }
 
 async function bayar() {
   if (!state.currentSession) { bukaShift(); return; }
-  if (!state.selectedTable) { Utils.showToast("Pilih meja!", 'warning'); return; }
+  if (isMejaFeatureEnabled() && !state.selectedTable && !window._directOpenBillPayment && !window._currentOpenBillId) { Utils.showToast("Pilih meja!", 'warning'); return; }
   if (state.cart.length === 0) { Utils.showToast("Keranjang kosong!", 'error'); return; }
 
   const total = getTotal();
@@ -623,108 +793,147 @@ async function bayar() {
     cashAmount = state.cashAmount || 0;
     qrisAmount = state.qrisAmount || 0;
     paid = cashAmount + qrisAmount;
-    if (paid < total) { Utils.showToast("Pembayaran kurang!", 'error'); return; }
+    if (qrisAmount > total || cashAmount > total) {
+      if (qrisAmount > total) { Utils.showToast("Nominal QRIS tidak boleh melebihi total transaksi!", 'error'); return; }
+    }
+    if (paid !== total) { Utils.showToast("Untuk pembayaran campuran, total cash + QRIS harus sama dengan total transaksi.", 'error'); return; }
   }
 
   try {
+    const stockPlan = new Map();
+    const productPlan = new Map();
+    const snapshotItems = [];
+
     for (const item of state.cart) {
       const produk = state.menus.find(m => m.id === item.id);
-      if (!produk) continue;
-      if (produk.resep) {
-        for (const bahan of produk.resep) {
-          const bahanData = state.rawMaterials.find(b => b.id === bahan.bahanId);
-          if (!bahanData || bahanData.stock < (bahan.qty * item.qty)) {
-            throw new Error(`Stok ${bahan.nama} tidak cukup`);
-          }
-        }
+      if (!produk) throw new Error(`Produk "${item.name || item.id}" tidak ditemukan`);
+      if (produk.useStock) {
+        productPlan.set(item.id, (productPlan.get(item.id) || 0) + Number(item.qty || 0));
       }
-      if (produk.useStock && produk.stock < item.qty) throw new Error(`Stok ${produk.name} tidak cukup`);
-
-      for (const mod of (item.modifiers || [])) {
-        if (!mod.resep || mod.resep.length === 0) continue;
+      const recipeSnapshot = (produk.resep || []).map(b => ({ ...b }));
+      for (const bahan of recipeSnapshot) {
+        const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
+        stockPlan.set(bahan.bahanId, (stockPlan.get(bahan.bahanId) || 0) + qty);
+      }
+      const modifierSnapshots = (item.modifiers || []).map(mod => ({
+        ...mod,
+        resep: (mod.resep || []).map(b => ({ ...b }))
+      }));
+      for (const mod of modifierSnapshots) {
         for (const bahan of mod.resep) {
-          const bahanData = state.rawMaterials.find(b => b.id === bahan.bahanId);
-          if (!bahanData || bahanData.stock < (bahan.qty * item.qty)) {
-            throw new Error(`Stok ${bahan.namaBahan} tidak cukup untuk modifier "${mod.optionName}"`);
-          }
+          const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
+          stockPlan.set(bahan.bahanId, (stockPlan.get(bahan.bahanId) || 0) + qty);
         }
       }
+      snapshotItems.push({ item, produk, recipeSnapshot, modifierSnapshots });
     }
 
     const trxData = {
-      items: state.cart.map(i => ({
-        id: i.id,
-        name: i.name,
-        price: i.price,
-        qty: i.qty,
-        modifiers: i.modifiers || [],
-        modifierTotal: _getItemModifierTotal(i),
-        notes: i.notes || '',
-        subtotal: (i.price + _getItemModifierTotal(i)) * i.qty
-      })),
+      items: state.cart.map(i => {
+        const grossSubtotal = (i.price + _getItemModifierTotal(i)) * i.qty;
+        const cartSubtotal = getCartSubtotal();
+        const allocatedDiscount = cartSubtotal > 0 ? Math.round(getDiscountAmount() * grossSubtotal / cartSubtotal) : 0;
+        return {
+          id: i.id,
+          name: i.name,
+          price: i.price,
+          salePrice: i.price,
+          costPrice: Number(i.costPrice || 0),
+          qty: i.qty,
+          modifiers: i.modifiers || [],
+          recipeSnapshot: ((snapshotItems.find(x => x.item === i)?.recipeSnapshot) || []).map(b => ({ ...b })),
+          modifierTotal: _getItemModifierTotal(i),
+          notes: i.notes || '',
+          subtotal: grossSubtotal,
+          discountAmount: allocatedDiscount,
+          netSubtotal: Math.max(0, grossSubtotal - allocatedDiscount)
+        };
+      }),
+      subtotal: getCartSubtotal(),
+      discountType: state.discountMode,
+      discountValue: Number(state.discountValue) || 0,
+      discountSource: state.discountSource || 'manual',
+      discountTemplateId: state.discountTemplateId || null,
+      discountAmount: getDiscountAmount(),
       total, paid, change: paid - total,
       cashAmount, qrisAmount,
       metodeBayar: state.selectedPaymentMethod,
       sessionId: state.currentSession.id,
-      mejaId: state.selectedTable.id,
-      mejaNama: state.selectedTable.nama,
-      mejaNomor: state.selectedTable.nomor,
+      mejaId: isMejaFeatureEnabled() ? (state.selectedTable?.id || null) : null,
+      mejaNama: isMejaFeatureEnabled() ? (state.selectedTable?.nama || null) : null,
+      mejaNomor: isMejaFeatureEnabled() ? (state.selectedTable?.nomor || null) : null,
       kasir: state.user.email,
+      kasirNama: state.currentSession?.kasir || state.user.email,
+      kasirAkun: state.user.email,
       date: new Date(),
       openBillId: window._currentOpenBillId || null
     };
 
-    const trxRef = await dbCloud.collection("transactions").add(trxData);
+    const trxRef = dbCloud.collection("transactions").doc();
+    const sessionRef = dbCloud.collection("sessions").doc(state.currentSession.id);
+    const openBillRef = window._currentOpenBillId ? dbCloud.collection('openBills').doc(window._currentOpenBillId) : null;
+
+    await dbCloud.runTransaction(async tx => {
+      const stockRefs = new Map();
+      for (const id of stockPlan.keys()) stockRefs.set(`raw:${id}`, dbCloud.collection('raw_materials').doc(id));
+      for (const id of productPlan.keys()) stockRefs.set(`menu:${id}`, dbCloud.collection('menus').doc(id));
+      const stockSnaps = new Map();
+      for (const [key, ref] of stockRefs) stockSnaps.set(key, await tx.get(ref));
+      const sessionSnap = await tx.get(sessionRef);
+      if (!sessionSnap.exists || sessionSnap.data().status !== 'active') throw new Error('SHIFT_CLOSED');
+
+      for (const [id, qty] of stockPlan) {
+        const snap = stockSnaps.get(`raw:${id}`);
+        if (!snap.exists) throw new Error(`Bahan ${id} tidak ditemukan`);
+        const stock = Number(snap.data().stock || 0);
+        if (stock < qty) throw new Error(`Stok ${snap.data().name || id} tidak cukup`);
+      }
+      for (const [id, qty] of productPlan) {
+        const snap = stockSnaps.get(`menu:${id}`);
+        if (!snap.exists) throw new Error(`Produk ${id} tidak ditemukan`);
+        const stock = Number(snap.data().stock || 0);
+        if (stock < qty) throw new Error(`Stok ${snap.data().name || id} tidak cukup`);
+      }
+
+      tx.create(trxRef, trxData);
+      for (const [id, qty] of stockPlan) {
+        tx.update(stockRefs.get(`raw:${id}`), { stock: firebase.firestore.FieldValue.increment(-qty) });
+      }
+      for (const [id, qty] of productPlan) {
+        tx.update(stockRefs.get(`menu:${id}`), { stock: firebase.firestore.FieldValue.increment(-qty) });
+      }
+      const now = new Date();
+      for (const { item, produk, recipeSnapshot, modifierSnapshots } of snapshotItems) {
+        for (const bahan of recipeSnapshot) {
+          const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
+          tx.set(dbCloud.collection('stock_mutations').doc(), {
+            type: 'out', source: 'sale', bahanId: bahan.bahanId, namaBahan: bahan.nama, qty,
+            satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: produk.name,
+            transactionId: trxRef.id, userId: state.user.email, createdAt: now
+          });
+        }
+        for (const mod of modifierSnapshots) {
+          for (const bahan of mod.resep) {
+            const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
+            tx.set(dbCloud.collection('stock_mutations').doc(), {
+              type: 'out', source: 'sale', bahanId: bahan.bahanId, namaBahan: bahan.namaBahan, qty,
+              satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: produk.name,
+              modifierId: mod.optionId, namaModifier: mod.optionName, transactionId: trxRef.id,
+              userId: state.user.email, createdAt: now
+            });
+          }
+        }
+      }
+      tx.update(sessionRef, {
+        totalPenjualan: firebase.firestore.FieldValue.increment(total),
+        jumlahTransaksi: firebase.firestore.FieldValue.increment(1),
+        updatedAt: now
+      });
+      if (openBillRef) tx.update(openBillRef, { status: 'paid', paidAt: now, transactionId: trxRef.id });
+    });
+
     const trxId = trxRef.id;
 
-    const batch = dbCloud.batch();
-    for (const item of state.cart) {
-      const produk = state.menus.find(m => m.id === item.id);
-      if (!produk) continue;
-      if (produk.useStock) {
-        batch.update(dbCloud.collection("menus").doc(item.id), {
-          stock: firebase.firestore.FieldValue.increment(-item.qty)
-        });
-      }
-      if (produk.resep) {
-        for (const bahan of produk.resep) {
-          batch.update(dbCloud.collection("raw_materials").doc(bahan.bahanId), {
-            stock: firebase.firestore.FieldValue.increment(-(bahan.qty * item.qty))
-          });
-          batch.set(dbCloud.collection("stock_mutations").doc(), {
-            type: "out", source: "sale",
-            bahanId: bahan.bahanId, namaBahan: bahan.nama,
-            qty: bahan.qty * item.qty, satuan: bahan.satuan || 'pcs',
-            produkId: item.id, namaProduk: produk.name,
-            transactionId: trxId, userId: state.user.email, createdAt: new Date()
-          });
-        }
-      }
-      for (const mod of (item.modifiers || [])) {
-        if (!mod.resep || mod.resep.length === 0) continue;
-        for (const bahan of mod.resep) {
-          batch.update(dbCloud.collection("raw_materials").doc(bahan.bahanId), {
-            stock: firebase.firestore.FieldValue.increment(-(bahan.qty * item.qty))
-          });
-          batch.set(dbCloud.collection("stock_mutations").doc(), {
-            type: "out", source: "sale",
-            bahanId: bahan.bahanId, namaBahan: bahan.namaBahan,
-            qty: bahan.qty * item.qty, satuan: bahan.satuan || 'pcs',
-            produkId: item.id, namaProduk: produk.name,
-            modifierId: mod.optionId, namaModifier: mod.optionName,
-            transactionId: trxId, userId: state.user.email, createdAt: new Date()
-          });
-        }
-      }
-    }
-
-    if (window._currentOpenBillId) {
-      batch.update(dbCloud.collection('openBills').doc(window._currentOpenBillId), {
-        status: 'paid', paidAt: new Date(), transactionId: trxId
-      });
-    }
-
-    await batch.commit();
 
     trxData.id = trxId;
     if (typeof window.printStruk === 'function') await window.printStruk(trxData);
@@ -734,13 +943,60 @@ async function bayar() {
     state.cashAmount = 0;
     state.qrisAmount = 0;
     state.selectedPaymentMethod = 'tunai';
+    state.discountSource = 'manual';
+    state.discountTemplateId = null;
+    state.discountMode = 'percent';
+    state.discountValue = 0;
+    window._discountDraftValue = 0;
     window._currentOpenBillId = null;
 
     Utils.showToast("Transaksi berhasil!");
     renderKasir();
   } catch (err) {
-    Utils.showToast("" + err.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(err, 'Transaksi gagal diproses. Silakan coba lagi.'), 'error');
   }
+}
+
+async function showOpenBillPaymentModal(openBill) {
+  if (!openBill) return;
+  const snapshot = {
+    cart: state.cart,
+    selectedTable: state.selectedTable,
+    discountMode: state.discountMode,
+    discountValue: state.discountValue,
+    discountSource: state.discountSource,
+    discountTemplateId: state.discountTemplateId,
+    cashAmount: state.cashAmount,
+    qrisAmount: state.qrisAmount,
+    selectedPaymentMethod: state.selectedPaymentMethod,
+    discountDraftValue: window._discountDraftValue,
+    currentOpenBillId: window._currentOpenBillId
+  };
+  _loadOpenBill(openBill, openBill.mejaId ? { id: openBill.mejaId, nomor: openBill.mejaNomor, nama: openBill.mejaNama } : null);
+  state.cashAmount = 0;
+  state.qrisAmount = 0;
+  state.selectedPaymentMethod = 'tunai';
+  window._directOpenBillPayment = { snapshot, openBillId: openBill.id };
+  await showPaymentModal();
+}
+
+function _restoreDirectOpenBillPayment() {
+  const context = window._directOpenBillPayment;
+  if (!context) return;
+  const s = context.snapshot;
+  state.cart = s.cart;
+  state.selectedTable = s.selectedTable;
+  state.discountMode = s.discountMode;
+  state.discountValue = s.discountValue;
+  state.discountSource = s.discountSource;
+  state.discountTemplateId = s.discountTemplateId;
+  state.cashAmount = s.cashAmount;
+  state.qrisAmount = s.qrisAmount;
+  state.selectedPaymentMethod = s.selectedPaymentMethod;
+  window._discountDraftValue = s.discountDraftValue;
+  window._currentOpenBillId = s.currentOpenBillId;
+  delete window._directOpenBillPayment;
+  renderKasir();
 }
 
 async function showPaymentModal() {
@@ -785,16 +1041,17 @@ async function showPaymentModal() {
     });
   };
 
-  document.getElementById('cancelPaymentBtn').addEventListener('click', () => modal.remove());
+  document.getElementById('cancelPaymentBtn').addEventListener('click', () => { modal.remove(); _restoreDirectOpenBillPayment(); });
   document.getElementById('processPaymentBtn').addEventListener('click', async function () {
     const btn = this;
     Utils.setButtonLoading(btn, true);
     try {
       await bayar();
       if (document.body.contains(modal)) modal.remove();
+      if (window._directOpenBillPayment) _restoreDirectOpenBillPayment();
     } catch (error) {
       Utils.setButtonLoading(btn, false);
-      Utils.showToast('Gagal proses pembayaran: ' + error.message, 'error');
+      Utils.showToast(Utils.getFriendlyError(error, 'Pembayaran gagal diproses. Silakan coba lagi.'), 'error');
     }
   });
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -814,12 +1071,10 @@ function renderModalPaymentContent() {
           <button class="btn btn-secondary" onclick="quickCash(100000)">100K</button>
           <button class="btn btn-secondary" onclick="quickCash(${total})">LUNAS</button>
         </div>
-        ${state.cashAmount > 0 ? `
-          <div class="change-info ${state.cashAmount >= total ? 'success' : 'warning'}">
-            <span>${state.cashAmount >= total ? 'Kembalian' : 'Kekurangan'}</span>
-            <span>Rp ${Utils.formatRupiah(Math.abs(state.cashAmount - total))}</span>
-          </div>
-        ` : ''}
+        <div class="change-info ${state.cashAmount >= total ? 'success' : 'warning'}">
+          <span>${state.cashAmount >= total ? 'Kembalian' : 'Kekurangan'}</span>
+          <span>Rp ${Utils.formatRupiah(Math.abs(state.cashAmount - total))}</span>
+        </div>
       </div>
     `;
   }
@@ -959,6 +1214,7 @@ window.pilihMeja = pilihMeja;
 window.simpanKeOpenBill = simpanKeOpenBill;
 window.bayar = bayar;
 window.showPaymentModal = showPaymentModal;
+window.showOpenBillPaymentModal = showOpenBillPaymentModal;
 
 window._onKasirSearch = function (val) {
   state.kasirSearchQuery = val;

@@ -53,11 +53,7 @@ function renderModifierManager() {
             <p>${_modSearchQuery ? `Tidak ada hasil untuk "${_modSearchQuery}"` : 'Buat modifier group untuk add-on atau pilihan menu'}</p>
             ${_modSearchQuery ? `
               <button class="btn btn-secondary btn-sm" onclick="window._onModSearch('')">Reset Pencarian</button>
-            ` : `
-              <button class="btn btn-primary" onclick="showAddModifierGroupModal()">
-                <i class="fas fa-plus"></i> Tambah Group
-              </button>
-            `}
+            ` : ''}
           </div>
         </div>
       ` : `
@@ -120,23 +116,22 @@ function _renderGroupCard(group) {
   `;
 }
 
-function _buildModalShell(id, title, bodyHtml) {
+function _buildModalShell(id, title, bodyHtml, actionHtml = '') {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = id;
   modal.innerHTML = `
-    <div class="modal modal-wide">
+    <div class="modal modal-wide modal-top-actions">
       <div class="modal-header">
         <h3>${title}</h3>
-        <button class="btn-icon-sm" onclick="document.getElementById('${id}').remove()">
-          <i class="fas fa-times"></i>
-        </button>
+        ${actionHtml ? `<div class="modal-actions">${actionHtml}</div>` : ''}
       </div>
       <div class="modal-body stack-y">${bodyHtml}</div>
     </div>
   `;
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
+  Utils.pinModalActions(modal);
   return modal;
 }
 
@@ -312,19 +307,61 @@ async function _syncMenuLinks(groupId, newMenuIds, oldMenuIds = []) {
 }
 
 function _menuChecklistHtml(checkedIds = [], cssClass = 'mg-menu-check') {
-  const menus = (state.menus || []).sort((a, b) => a.name.localeCompare(b.name));
+  const menus = [...(state.menus || [])].sort((a, b) => a.name.localeCompare(b.name));
   if (menus.length === 0) return '<small class="text-muted">Belum ada menu</small>';
+  const categories = [...new Map(menus.map(m => {
+    const category = (state.categories || []).find(c => c.id === m.categoryId);
+    return [m.categoryId || 'uncategorized', category?.name || 'Tanpa Kategori'];
+  })).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const safeClass = cssClass.replace(/[^a-zA-Z0-9_-]/g, '');
+  const containerId = `${safeClass}-wrap`;
+  const searchId = `${safeClass}-search`;
+  const categoryId = `${safeClass}-category`;
   return `
-    <div class="modifier-menu-link-grid">
-      ${menus.map(m => `
-        <label class="checkbox-label">
-          <input type="checkbox" class="${cssClass}" value="${m.id}" ${checkedIds.includes(m.id) ? 'checked' : ''}>
-          ${m.name}
-        </label>
-      `).join('')}
+    <div id="${containerId}">
+      <div class="modifier-menu-link-tools">
+        <input id="${searchId}" class="form-input" type="search" placeholder="Cari menu..." oninput="window._filterModifierMenus('${safeClass}')">
+        <select id="${categoryId}" class="form-input" onchange="window._filterModifierMenus('${safeClass}')">
+          <option value="">Semua Kategori</option>
+          ${categories.map(([id, name]) => `<option value="${id}">${name}</option>`).join('')}
+        </select>
+      </div>
+      <small class="modifier-menu-link-count" id="${safeClass}-count">${checkedIds.length} menu dipilih dari ${menus.length}</small>
+      <div class="modifier-menu-link-grid">
+        ${menus.map(m => {
+          const category = (state.categories || []).find(c => c.id === m.categoryId);
+          return `
+            <label class="checkbox-label mg-menu-option" data-menu-name="${m.name.toLowerCase()}" data-category-id="${String(m.categoryId || 'uncategorized')}">
+              <input type="checkbox" class="${cssClass}" value="${m.id}" ${checkedIds.includes(m.id) ? 'checked' : ''} onchange="window._updateModifierMenuCount('${safeClass}')">
+              <span><strong>${m.name}</strong><small>${category?.name || 'Tanpa Kategori'}</small></span>
+            </label>
+          `;
+        }).join('')}
+      </div>
     </div>
   `;
 }
+
+window._filterModifierMenus = function(safeClass) {
+  const wrap = document.getElementById(`${safeClass}-wrap`);
+  if (!wrap) return;
+  const query = (document.getElementById(`${safeClass}-search`)?.value || '').trim().toLowerCase();
+  const category = document.getElementById(`${safeClass}-category`)?.value || '';
+  wrap.querySelectorAll('.mg-menu-option').forEach(option => {
+    const matchesQuery = !query || (option.dataset.menuName || '').includes(query);
+    const matchesCategory = !category || String(option.dataset.categoryId || '') === String(category);
+    option.hidden = !(matchesQuery && matchesCategory);
+  });
+};
+
+window._updateModifierMenuCount = function(safeClass) {
+  const wrap = document.getElementById(`${safeClass}-wrap`);
+  if (!wrap) return;
+  const count = wrap.querySelectorAll('input[type="checkbox"]:checked').length;
+  const total = wrap.querySelectorAll('input[type="checkbox"]').length;
+  const target = document.getElementById(`${safeClass}-count`);
+  if (target) target.textContent = `${count} menu dipilih dari ${total}`;
+};
 
 function showAddModifierGroupModal() {
   _optRowIdx = 1;
@@ -359,14 +396,8 @@ function showAddModifierGroupModal() {
       <label class="form-label">Hubungkan ke Menu <span class="text-muted">(opsional)</span></label>
       ${_menuChecklistHtml()}
     </div>
-    <div class="modal-footer-inline">
-      <button class="btn btn-secondary" onclick="document.getElementById('modal-add-modifier').remove()">Batal</button>
-      <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveNewModifierGroup().finally(()=>Utils.setButtonLoading(b,false))">
-        <i class="fas fa-save"></i> Simpan
-      </button>
-    </div>
   `;
-  _buildModalShell('modal-add-modifier', '<i class="fas fa-plus"></i> Tambah Modifier Group', body);
+  _buildModalShell('modal-add-modifier', '<i class="fas fa-plus"></i> Tambah Modifier Group', body, '<button class="btn btn-secondary" onclick="document.getElementById(\'modal-add-modifier\').remove()">Batal</button><button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveNewModifierGroup().finally(()=>Utils.setButtonLoading(b,false))"><i class="fas fa-save"></i> Simpan</button>');
 }
 
 window._addOptRow = function() {
@@ -436,14 +467,8 @@ async function editModifierGroup(id) {
       <label class="form-label">Hubungkan ke Menu</label>
       ${_menuChecklistHtml(oldLinked, 'mg-edit-menu-check')}
     </div>
-    <div class="modal-footer-inline">
-      <button class="btn btn-secondary" onclick="document.getElementById('modal-edit-modifier').remove()">Batal</button>
-      <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveEditModifierGroup('${id}').finally(()=>Utils.setButtonLoading(b,false))">
-        <i class="fas fa-save"></i> Simpan
-      </button>
-    </div>
   `;
-  _buildModalShell('modal-edit-modifier', '<i class="fas fa-edit"></i> Edit Modifier Group', body);
+  _buildModalShell('modal-edit-modifier', '<i class="fas fa-edit"></i> Edit Modifier Group', body, `<button class="btn btn-secondary" onclick="document.getElementById('modal-edit-modifier').remove()">Batal</button><button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveEditModifierGroup('${id}').finally(()=>Utils.setButtonLoading(b,false))"><i class="fas fa-save"></i> Simpan</button>`);
   window._editModGroupOldLinked = oldLinked;
 }
 

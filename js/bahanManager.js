@@ -66,7 +66,16 @@ function renderBahanManager() {
           </tr>
         </thead>
         <tbody>
-          ${filteredBahan.map(b => `
+          ${filteredBahan.length === 0 ? `
+            <tr>
+              <td class="td-base" colspan="5">
+                <div class="empty-state compact">
+                  <i class="fas fa-box-open"></i>
+                  <p>${_bahanSearchQuery ? `Tidak ada hasil untuk "${_bahanSearchQuery}"` : 'Belum ada bahan stok'}</p>
+                </div>
+              </td>
+            </tr>
+          ` : filteredBahan.map(b => `
             <tr class="neu-table-row">
               <td class="td-base td-medium" data-label="Nama">${b.name}</td>
               <td class="td-base" data-label="Stok">
@@ -121,9 +130,18 @@ function _saveBahanScroll() {
 }
 
 async function showAddBahanModal() {
-  const result = await Utils.showModal({
-    title: '➕ Tambah Bahan Baru',
-    content: `
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'tambah-bahan-modal';
+  modal.innerHTML = `
+    <div class="modal modal-lg modal-top-actions">
+      <div class="modal-header">
+        <h3><i class="fas fa-plus-circle"></i> Tambah Bahan</h3>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeTambahBahanModal()">Batal</button>
+          <button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);prosesTambahBahan().finally(()=>Utils.setButtonLoading(b,false))"><i class="fas fa-save"></i> Simpan</button>
+        </div>
+      </div>
       <div class="form-group">
         <label class="form-label">Nama Bahan <span class="text-danger">*</span></label>
         <input type="text" id="bahanName" class="form-input" placeholder="Contoh: Telur" autofocus>
@@ -151,48 +169,36 @@ async function showAddBahanModal() {
         <label class="form-label">Supplier (opsional)</label>
         <input type="text" id="bahanSupplier" class="form-input" placeholder="Nama supplier">
       </div>
-    `,
-    buttons: [
-      { text: 'Batal', action: 'cancel', class: 'btn-secondary' },
-      {
-        text: 'Simpan',
-        action: 'save',
-        class: 'btn-primary',
-        onClick: () => {
-          window._bahanName = document.getElementById('bahanName')?.value;
-          window._bahanSatuan = document.getElementById('bahanSatuan')?.value;
-          window._bahanStock = document.getElementById('bahanStock')?.value;
-          window._bahanMinStock = document.getElementById('bahanMinStock')?.value;
-          window._bahanSupplier = document.getElementById('bahanSupplier')?.value;
-        }
-      }
-    ]
-  });
-  if (result !== 'save') return;
-  const name = window._bahanName?.trim();
-  if (!name) {
-    Utils.showToast("Nama harus diisi", 'error');
-    return;
-  }
-  try {
-    await dbCloud.collection("raw_materials").add({
-      name: name,
-      satuan: window._bahanSatuan || 'kg',
-      stock: parseFloat(window._bahanStock) || 0,
-      minStock: parseInt(window._bahanMinStock) || 5,
-      supplier: window._bahanSupplier || null,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
-    Utils.showToast("Bahan ditambahkan");
-    delete window._bahanName;
-    delete window._bahanSatuan;
-    delete window._bahanStock;
-    delete window._bahanMinStock;
-    delete window._bahanSupplier;
-  } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
-  }
+    </div>
+  `;
+  document.body.appendChild(modal);
+  Utils.pinModalActions(modal);
+  window.closeTambahBahanModal = function () {
+    document.getElementById('tambah-bahan-modal')?.remove();
+  };
+  window.prosesTambahBahan = async function () {
+    const name = document.getElementById('bahanName')?.value?.trim();
+    if (!name) {
+      Utils.showToast('Nama harus diisi', 'error');
+      document.getElementById('bahanName')?.focus();
+      return;
+    }
+    try {
+      await dbCloud.collection('raw_materials').add({
+        name,
+        satuan: document.getElementById('bahanSatuan')?.value || 'kg',
+        stock: parseFloat(document.getElementById('bahanStock')?.value) || 0,
+        minStock: parseInt(document.getElementById('bahanMinStock')?.value) || 5,
+        supplier: document.getElementById('bahanSupplier')?.value?.trim() || null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      Utils.showToast('Bahan ditambahkan');
+      closeTambahBahanModal();
+    } catch (error) {
+      Utils.showToast(Utils.getFriendlyError(error), 'error');
+    }
+  };
 }
 
 async function tambahStokBahan(id) {
@@ -202,8 +208,14 @@ async function tambahStokBahan(id) {
   modal.className = 'modal-overlay';
   modal.id = 'tambah-stok-modal';
   modal.innerHTML = `
-    <div class="modal modal-sm">
-      <h3><i class="fas fa-plus-circle"></i> Tambah Stok ${bahan.name}</h3>
+    <div class="modal modal-sm modal-top-actions">
+      <div class="modal-header">
+        <h3><i class="fas fa-plus-circle"></i> Tambah Stok</h3>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeTambahStokModal()">Batal</button>
+          <button class="btn btn-primary" onclick="prosesTambahStok('${id}')"><i class="fas fa-save"></i> Tambah</button>
+        </div>
+      </div>
       <div class="bahan-info-box">
         <div class="bahan-info-row">
           <span>Stok Saat Ini:</span>
@@ -218,15 +230,10 @@ async function tambahStokBahan(id) {
         <label class="form-label">Keterangan (opsional)</label>
         <input type="text" id="tambahNotes" class="form-input" placeholder="Contoh: Pembelian dari supplier">
       </div>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeTambahStokModal()">Batal</button>
-        <button class="btn btn-primary" onclick="prosesTambahStok('${id}')">
-          <i class="fas fa-save"></i> Tambah
-        </button>
-      </div>
     </div>
   `;
   document.body.appendChild(modal);
+  Utils.pinModalActions(modal);
   setTimeout(() => {
     const input = document.getElementById('tambahQty');
     if (input) input.focus();
@@ -281,7 +288,7 @@ async function tambahStokBahan(id) {
       if (error.code === 'permission-denied') {
         Utils.showToast("Tidak punya izin. Periksa Firestore Rules", 'error');
       } else {
-        Utils.showToast("Gagal: " + error.message, 'error');
+        Utils.showToast(Utils.getFriendlyError(error), 'error');
       }
     }
   };
@@ -294,8 +301,14 @@ async function kurangiStokBahanManual(id) {
   modal.className = 'modal-overlay';
   modal.id = 'kurang-stok-modal';
   modal.innerHTML = `
-    <div class="modal modal-sm">
-      <h3><i class="fas fa-minus-circle"></i> Kurangi Stok ${bahan.name}</h3>
+    <div class="modal modal-sm modal-top-actions">
+      <div class="modal-header">
+        <h3><i class="fas fa-minus-circle"></i> Kurangi Stok</h3>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeKurangStokModal()">Batal</button>
+          <button class="btn btn-primary" onclick="prosesKurangStok('${id}')"><i class="fas fa-check"></i> Kurangi</button>
+        </div>
+      </div>
       <div class="bahan-info-box">
         <div class="bahan-info-row">
           <span>Stok Saat Ini:</span>
@@ -309,12 +322,6 @@ async function kurangiStokBahanManual(id) {
       <div class="form-group">
         <label class="form-label">Keterangan (opsional)</label>
         <input type="text" id="kurangNotes" class="form-input" placeholder="Contoh: Rusak/Expired">
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeKurangStokModal()">Batal</button>
-        <button class="btn btn-primary" onclick="prosesKurangStok('${id}')">
-          <i class="fas fa-check"></i> Kurangi
-        </button>
       </div>
     </div>
   `;
@@ -373,7 +380,7 @@ async function kurangiStokBahanManual(id) {
       closeKurangStokModal();
       renderBahanManager();
     } catch (error) {
-      Utils.showToast("Gagal: " + error.message, 'error');
+      Utils.showToast(Utils.getFriendlyError(error), 'error');
     }
   };
 }
@@ -385,8 +392,14 @@ async function editBahan(id) {
   modal.className = 'modal-overlay';
   modal.id = 'edit-bahan-modal';
   modal.innerHTML = `
-    <div class="modal modal-lg">
-      <h3><i class="fas fa-edit"></i> Edit ${bahan.name}</h3>
+    <div class="modal modal-lg modal-top-actions">
+      <div class="modal-header">
+        <h3><i class="fas fa-edit"></i> Edit Bahan</h3>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeEditBahanModal()">Batal</button>
+          <button class="btn btn-primary" onclick="prosesEditBahan('${id}')"><i class="fas fa-save"></i> Simpan</button>
+        </div>
+      </div>
       <div class="form-group">
         <label class="form-label">Nama Bahan</label>
         <input type="text" id="editBahanName" class="form-input" value="${bahan.name}">
@@ -410,15 +423,10 @@ async function editBahan(id) {
         <label class="form-label">Supplier</label>
         <input type="text" id="editBahanSupplier" class="form-input" value="${bahan.supplier || ''}">
       </div>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeEditBahanModal()">Batal</button>
-        <button class="btn btn-primary" onclick="prosesEditBahan('${id}')">
-          <i class="fas fa-save"></i> Simpan
-        </button>
-      </div>
     </div>
   `;
   document.body.appendChild(modal);
+  Utils.pinModalActions(modal);
   window.closeEditBahanModal = function () {
     const modal = document.getElementById('edit-bahan-modal');
     if (modal) {
@@ -450,7 +458,7 @@ async function editBahan(id) {
       closeEditBahanModal();
       renderBahanManager();
     } catch (error) {
-      Utils.showToast("Gagal: " + error.message, 'error');
+      Utils.showToast(Utils.getFriendlyError(error), 'error');
     }
   };
 }
@@ -557,7 +565,7 @@ async function lihatRiwayatStok(bahanId) {
       const listEl = document.getElementById('riwayat-stok-list');
       if (listEl) listEl.innerHTML = _buildRiwayatRows();
     } catch (err) {
-      Utils.showToast('Gagal: ' + err.message, 'error');
+      Utils.showToast(Utils.getFriendlyError(err), 'error');
     }
   };
 }
@@ -577,7 +585,7 @@ async function hapusBahan(id) {
     }
     renderBahanManager();
   } catch (error) {
-    Utils.showToast("Gagal: " + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 

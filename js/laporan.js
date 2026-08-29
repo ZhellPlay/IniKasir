@@ -12,8 +12,8 @@ function renderLaporan() {
   _saveLaporanScroll();
   state.currentView = 'laporan';
   const content = `
-    <div class="stack-y">
-      <div class="tab-nav">
+    <div class="stack-y page-static">
+      <div class="tab-nav laporan-tabs">
         ${['harian','mingguan','bulanan','shift'].map(m => `
           <button class="tab-btn ${_laporanMode === m ? 'active' : ''}" onclick="window._setLaporanMode('${m}')">
             ${m === 'harian' ? '<i class="fas fa-calendar-day"></i> Harian'
@@ -73,6 +73,10 @@ function _allOpenBills()   { return state.openBills || []; }
 
 function _sumTrx(trxList) {
   const total = trxList.reduce((s, t) => s + (t.total || 0), 0);
+  const subtotal = trxList.reduce((s, t) => s + (t.subtotal ?? t.total ?? 0), 0);
+  const discount = trxList.reduce((s, t) => s + (t.discountAmount || 0), 0);
+  const hpp = trxList.reduce((s, t) => s + (t.items || []).reduce((x, i) => x + (Number(i.costPrice || 0) * (i.qty || 0)), 0), 0);
+  const labaKotor = total - hpp;
   const cash  = trxList.reduce((s, t) => {
     const qris = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
     return s + (t.metodeBayar === 'tunai' ? (t.total || 0) : Math.max(0, (t.total || 0) - qris));
@@ -81,7 +85,7 @@ function _sumTrx(trxList) {
     const qrisAmt = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
     return s + qrisAmt;
   }, 0);
-  return { total, cash, qris };
+  return { total, subtotal, discount, hpp, labaKotor, cash, qris };
 }
 
 function _shortRupiah(n) {
@@ -154,9 +158,9 @@ function _listHeader(col1) {
 function _buildListHarian() {
   const jb = _jamBuka();
   const now = new Date();
-  const base = new Date(now);
+  const operationalNow = _getOperationalDate(now, jb);
+  const base = new Date(operationalNow);
   base.setDate(base.getDate() - _laporanOffset * 7);
-  base.setHours(0, 0, 0, 0);
 
   const rows = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(base); d.setDate(d.getDate() - i);
@@ -164,7 +168,7 @@ function _buildListHarian() {
     const de = new Date(ds); de.setDate(de.getDate() + 1);
     const trxList = _allTrx().filter(t => { const td = _toDate(t.date); return td >= ds && td < de; });
     const { total } = _sumTrx(trxList);
-    const isToday = d.toDateString() === now.toDateString();
+    const isToday = d.toDateString() === operationalNow.toDateString();
     const label = _formatTgl(d) + (isToday ? ' <span class="badge badge-success">Hari Ini</span>' : '');
     return _rowItem(label, null, trxList.length, total, ds.toISOString(), 'harian', '');
   }).join('');
@@ -247,7 +251,7 @@ function _buildListShift() {
     const label = `Shift ${s.shift} &mdash; ${s.kasir || '-'}`;
     const sub = wb.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
       + (wt ? ` → ${wt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}` : ' → sekarang');
-    const extra = isActive ? `<span class="badge badge-success">AKTIF</span>` : '';
+    const extra = `${isActive ? `<span class="badge badge-success">AKTIF</span>` : ''} <span class="laporan-row-modal">Modal Rp ${Utils.formatRupiah(Number(s.modalAwal || 0))}</span>`;
     return _rowItem(label, sub, trxSesi.length, total, s.id, 'shift', extra);
   }).join('');
 
@@ -317,10 +321,12 @@ function _getPeriodData(mode, isoKey) {
 }
 
 function _buildDetailHTML(mode, isoKey) {
-  const { trxList, pengeluaranList, mutationList } = _getPeriodData(mode, isoKey);
-  const { total, cash, qris } = _sumTrx(trxList);
+  const { trxList, pengeluaranList, mutationList, sessionList } = _getPeriodData(mode, isoKey);
+  const { total, subtotal, discount, hpp, labaKotor, cash, qris } = _sumTrx(trxList);
   const totalPengeluaran = pengeluaranList.reduce((s, p) => s + (p.nominal || 0), 0);
+  const modalAwal = (sessionList || []).reduce((s, sess) => s + Number(sess.modalAwal || 0), 0);
   const cashBersih = cash - totalPengeluaran;
+  const uangDiLaci = modalAwal + cashBersih;
 
   const isTimeMode = (mode === 'harian' || mode === 'shift');
   const chartProdukLabel = 'Top Produk Terjual';
@@ -329,9 +335,14 @@ function _buildDetailHTML(mode, isoKey) {
   const recap = {};
   const recapModifier = {};
   trxList.forEach(t => (t.items || []).forEach(i => {
-    if (!recap[i.name]) recap[i.name] = { qty: 0, total: 0 };
+    if (!recap[i.name]) recap[i.name] = { qty: 0, total: 0, hpp: 0, laba: 0 };
+    const grossSales = (i.price + (i.modifierTotal || 0)) * i.qty;
+    const sales = i.netSubtotal ?? Math.max(0, grossSales - (i.discountAmount || 0));
+    const itemHpp = Number(i.costPrice || 0) * i.qty;
     recap[i.name].qty += i.qty;
-    recap[i.name].total += i.price * i.qty;
+    recap[i.name].total += sales;
+    recap[i.name].hpp += itemHpp;
+    recap[i.name].laba += sales - itemHpp;
     (i.modifiers || []).forEach(mod => {
       if (!mod.price || mod.price <= 0) return;
       const key = mod.optionName;
@@ -358,14 +369,19 @@ function _buildDetailHTML(mode, isoKey) {
       <div class="laporan-detail-section">
         <div class="laporan-section-title"><i class="fas fa-chart-pie"></i> Ringkasan</div>
         <div class="detail-stats-grid">
-          <div class="detail-stat"><span>Total Penjualan</span><strong>Rp ${Utils.formatRupiah(total)}</strong></div>
+          <div class="detail-stat"><span>Penjualan Kotor</span><strong>Rp ${Utils.formatRupiah(subtotal)}</strong></div>
+          <div class="detail-stat danger"><span>Diskon</span><strong>-Rp ${Utils.formatRupiah(discount)}</strong></div>
+          <div class="detail-stat"><span>Penjualan Bersih</span><strong>Rp ${Utils.formatRupiah(total)}</strong></div>
+          <div class="detail-stat"><span>HPP</span><strong>Rp ${Utils.formatRupiah(hpp)}</strong></div>
+          <div class="detail-stat success"><span>Laba Kotor</span><strong>Rp ${Utils.formatRupiah(labaKotor)}</strong></div>
+          <div class="detail-stat success"><span>Margin</span><strong>${total > 0 ? ((labaKotor / total) * 100).toFixed(1) : '0.0'}%</strong></div>
           <div class="detail-stat"><span>Transaksi</span><strong>${trxList.length}x</strong></div>
           <div class="detail-stat cash"><span>CASH</span><strong>Rp ${Utils.formatRupiah(cash)}</strong></div>
           <div class="detail-stat qris"><span>QRIS</span><strong>Rp ${Utils.formatRupiah(qris)}</strong></div>
-          ${totalPengeluaran > 0 ? `
-            <div class="detail-stat danger"><span>Pengeluaran</span><strong>-Rp ${Utils.formatRupiah(totalPengeluaran)}</strong></div>
-            <div class="detail-stat success"><span>Cash Bersih</span><strong>Rp ${Utils.formatRupiah(cashBersih)}</strong></div>
-          ` : ''}
+          <div class="detail-stat"><span>Modal Awal</span><strong>Rp ${Utils.formatRupiah(modalAwal)}</strong></div>
+          <div class="detail-stat danger"><span>Pengeluaran</span><strong>-Rp ${Utils.formatRupiah(totalPengeluaran)}</strong></div>
+          <div class="detail-stat success"><span>Cash Bersih</span><strong>Rp ${Utils.formatRupiah(cashBersih)}</strong></div>
+          <div class="detail-stat success"><span>Kas Seharusnya di Laci</span><strong>Rp ${Utils.formatRupiah(uangDiLaci)}</strong></div>
         </div>
 
         ${hasCharts ? `
@@ -397,6 +413,7 @@ function _buildDetailHTML(mode, isoKey) {
                   <div class="recap-produk-stats">
                     <span class="recap-produk-qty">${d.qty}x</span>
                     <span class="recap-produk-total">Rp ${Utils.formatRupiah(d.total)}</span>
+                    <span class="recap-produk-total text-muted">HPP ${Utils.formatRupiah(d.hpp)} · Laba ${Utils.formatRupiah(d.laba)}</span>
                   </div>
                 </div>
               `).join('')}
@@ -775,7 +792,7 @@ window._hapusLaporanPeriode = async function(mode, isoKey) {
     Utils.showToast(`Berhasil menghapus data ${label}`, 'success');
     _refreshLaporanContent();
   } catch (err) {
-    Utils.showToast('Gagal hapus total: ' + err.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(err, 'Gagal menghapus data. Silakan coba lagi.'), 'error');
   }
 };
 
@@ -785,17 +802,23 @@ window._exportLaporanPDF = async function(mode, isoKey) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
     const toko = state.settings?.toko || {};
-    const { trxList, pengeluaranList, mutationList, label } = _getPeriodData(mode, isoKey);
-    const { total, cash, qris } = _sumTrx(trxList);
+    const { trxList, pengeluaranList, mutationList, sessionList, label } = _getPeriodData(mode, isoKey);
+    const { total, subtotal, discount, hpp, labaKotor, cash, qris } = _sumTrx(trxList);
     const totalPengeluaran = pengeluaranList.reduce((s, p) => s + (p.nominal || 0), 0);
+    const modalAwal = (sessionList || []).reduce((sum, sess) => sum + Number(sess.modalAwal || 0), 0);
     const cashBersih = cash - totalPengeluaran;
+    const uangDiLaci = modalAwal + cashBersih;
 
     const recap = {};
     const recapModifier = {};
     trxList.forEach(t => (t.items || []).forEach(i => {
-      if (!recap[i.name]) recap[i.name] = { qty: 0, total: 0 };
+      if (!recap[i.name]) recap[i.name] = { qty: 0, total: 0, hpp: 0, laba: 0 };
+      const sales = (i.price + (i.modifierTotal || 0)) * i.qty;
+      const itemHpp = Number(i.costPrice || 0) * i.qty;
       recap[i.name].qty += i.qty;
-      recap[i.name].total += i.price * i.qty;
+      recap[i.name].total += sales;
+      recap[i.name].hpp += itemHpp;
+      recap[i.name].laba += sales - itemHpp;
       (i.modifiers || []).forEach(mod => {
         if (!mod.price || mod.price <= 0) return;
         const key = mod.optionName;
@@ -859,14 +882,19 @@ window._exportLaporanPDF = async function(mode, isoKey) {
     y += 8;
 
     const cards = [
-      { label: 'Total Penjualan', value: 'Rp ' + Utils.formatRupiah(total), accent: GREEN },
-      { label: 'CASH',            value: 'Rp ' + Utils.formatRupiah(cash),  accent: TEAL_AC },
-      { label: 'QRIS',            value: 'Rp ' + Utils.formatRupiah(qris),  accent: BLUE_AC },
+      { label: 'Penjualan Kotor', value: 'Rp ' + Utils.formatRupiah(subtotal), accent: GREEN },
+      { label: 'Diskon', value: 'Rp ' + Utils.formatRupiah(discount), accent: ORANGE },
+      { label: 'Penjualan Bersih', value: 'Rp ' + Utils.formatRupiah(total), accent: GREEN },
+      { label: 'HPP', value: 'Rp ' + Utils.formatRupiah(hpp), accent: RED },
+      { label: 'Laba Kotor', value: 'Rp ' + Utils.formatRupiah(labaKotor), accent: TEAL_AC },
+      { label: 'Margin', value: (total > 0 ? ((labaKotor / total) * 100).toFixed(1) : '0.0') + '%', accent: TEAL_AC },
+      { label: 'CASH', value: 'Rp ' + Utils.formatRupiah(cash), accent: TEAL_AC },
+      { label: 'QRIS', value: 'Rp ' + Utils.formatRupiah(qris), accent: BLUE_AC },
+      { label: 'Modal Awal', value: 'Rp ' + Utils.formatRupiah(modalAwal), accent: BLUE_AC },
     ];
-    if (totalPengeluaran > 0) {
-      cards.push({ label: 'Pengeluaran', value: 'Rp ' + Utils.formatRupiah(totalPengeluaran), accent: RED });
-      cards.push({ label: 'Cash Bersih',  value: 'Rp ' + Utils.formatRupiah(cashBersih),        accent: GREEN });
-    }
+    cards.push({ label: 'Pengeluaran', value: 'Rp ' + Utils.formatRupiah(totalPengeluaran), accent: RED });
+    cards.push({ label: 'Cash Bersih', value: 'Rp ' + Utils.formatRupiah(cashBersih), accent: GREEN });
+    cards.push({ label: 'Kas Seharusnya', value: 'Rp ' + Utils.formatRupiah(uangDiLaci), accent: GREEN });
 
     const nCols = cards.length <= 3 ? 3 : 4;
     const gap = 2.5;
@@ -1024,20 +1052,30 @@ window._exportLaporanPDF = async function(mode, isoKey) {
     const recapRows = Object.entries(recap)
       .sort(function(a, b) { return b[1].qty - a[1].qty; })
       .map(function(entry) {
-        return [entry[0], entry[1].qty + ' pcs', 'Rp ' + Utils.formatRupiah(entry[1].total)];
+        return [entry[0], entry[1].qty + ' pcs', 'Rp ' + Utils.formatRupiah(entry[1].total), 'Rp ' + Utils.formatRupiah(entry[1].hpp), 'Rp ' + Utils.formatRupiah(entry[1].laba)];
       });
+
+    if (discount > 0) {
+      section('RINGKASAN DISKON', ORANGE);
+      doc.autoTable({ ...tblBase, startY: y, head: [['Subtotal', 'Diskon', 'Total Setelah Diskon']], body: [[
+        'Rp ' + Utils.formatRupiah(subtotal), '-Rp ' + Utils.formatRupiah(discount), 'Rp ' + Utils.formatRupiah(total)
+      ]], headStyles: { ...tblBase.headStyles, fillColor: ORANGE }, columnStyles: { 0:{halign:'right'},1:{halign:'right'},2:{halign:'right'} } });
+      y = doc.lastAutoTable.finalY + 5;
+    }
 
     if (recapRows.length > 0) {
       section('PRODUK TERJUAL', GREEN);
       doc.autoTable({
         ...tblBase,
         startY: y,
-        head: [['Nama Produk', 'Terjual', 'Total (Base)']],
+        head: [['Nama Produk', 'Terjual', 'Omzet', 'HPP', 'Laba Kotor']],
         body: recapRows,
         columnStyles: {
           0: { cellWidth: 'auto' },
           1: { cellWidth: 26, halign: 'center' },
-          2: { cellWidth: 40, halign: 'right' },
+          2: { cellWidth: 34, halign: 'right' },
+          3: { cellWidth: 30, halign: 'right' },
+          4: { cellWidth: 34, halign: 'right' },
         },
         didParseCell: function(d) {
           if (d.section === 'body' && d.row.index === 0) d.cell.styles.fontStyle = 'bold';
@@ -1163,7 +1201,7 @@ window._exportLaporanPDF = async function(mode, isoKey) {
     doc.save('laporan-' + mode + '-' + safeLabel + '.pdf');
     Utils.showToast('PDF berhasil diunduh', 'success');
   } catch (err) {
-    Utils.showToast('Gagal export PDF: ' + err.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(err, 'Gagal mengekspor PDF. Silakan coba lagi.'), 'error');
   }
 };
 

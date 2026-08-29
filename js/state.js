@@ -2,7 +2,7 @@ const app = document.getElementById("app");
 
 let sidebarCollapsed = window.matchMedia('(orientation: portrait)').matches
   ? true
-  : localStorage.getItem('sidebarCollapsed') === 'true';
+  : (window.Utils?.storage?.get('sidebarCollapsed', 'false') === 'true');
 let _isRendering = false;
 let _lastView = null;
 
@@ -22,11 +22,11 @@ window.triggerPageTransition = function(direction = 'forward') {
 
 window.navigateTo = function(view) {
     if (_lastView === view) return;
-    const isDrawerLayout = window.innerWidth <= 768 || window.matchMedia('(orientation: portrait)').matches;
+    const isDrawerLayout = window.matchMedia('(orientation: portrait)').matches;
     if (isDrawerLayout) {
         sidebarCollapsed = true;
         window.sidebarCollapsed = true;
-        localStorage.setItem('sidebarCollapsed', true);
+        if (!window.Utils?.storage?.set('sidebarCollapsed', 'true')) document.documentElement.dataset.storageFallback = 'true';
     }
     const fromIdx = NAV_ORDER.indexOf(_lastView);
     const toIdx   = NAV_ORDER.indexOf(view);
@@ -56,7 +56,7 @@ function createState(initialState) {
                 'currentView','cart','selectedCategory','selectedTable',
                 'selectedPaymentMethod','cashAmount','qrisAmount',
                 'transactions','selectedHistory','selectedMenus',
-                'modifierGroups','openBills','activeMobileTab'
+                'modifierGroups','openBills','activeMobileTab','discountMode','discountValue','discountSource','discountTemplateId'
             ].includes(property);
             if (!shouldRender) return true;
             requestAnimationFrame(() => {
@@ -82,7 +82,11 @@ let state = createState({
     lastCategoryScroll: 0, lastMenuScroll: 0, lastCartScroll: 0,
     modifierGroups: [], openBills: [],
     kasirSearchQuery: '', categorySearchQuery: '',
-    activeMobileTab: 'menu'
+    activeMobileTab: 'menu',
+    discountMode: 'percent',
+    discountValue: 0,
+    discountSource: 'manual',
+    discountTemplateId: null
 });
 
 window.app = app;
@@ -92,7 +96,7 @@ window.sidebarCollapsed = sidebarCollapsed;
 window.toggleSidebar = function () {
     sidebarCollapsed = !sidebarCollapsed;
     window.sidebarCollapsed = sidebarCollapsed;
-    localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
+    if (!window.Utils?.storage?.set('sidebarCollapsed', String(sidebarCollapsed))) document.documentElement.dataset.storageFallback = 'true';
     window.safeRender();
 };
 
@@ -118,7 +122,12 @@ window.safeRender = function () {
                     window._doneTopProgress?.();
                 }, 60);
             }
-        } catch (e) {
+        } catch (error) {
+            const message = error?.message || 'Terjadi kesalahan saat menampilkan halaman.';
+            const main = document.querySelector('.main-scroll');
+            if (main) {
+                main.innerHTML = `<div class="app-error-state"><i class="fas fa-triangle-exclamation"></i><h2>Halaman tidak dapat ditampilkan</h2><p>${window.Utils?.escapeHtml ? window.Utils.escapeHtml(message) : String(message).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</p><button class="btn btn-primary" onclick="window.safeRender()">Coba lagi</button></div>`;
+            }
         } finally {
             _isRendering = false;
         }

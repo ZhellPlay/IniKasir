@@ -12,7 +12,8 @@ function renderHistory() {
   }
 
   state.currentView = "history";
-  const totalIncome = state.transactions.reduce((sum, t) => sum + t.total, 0);
+  const totalIncome = state.transactions.reduce((sum, t) => sum + (Number(t.total) || 0), 0);
+  const totalSubtotal = state.transactions.reduce((sum, t) => sum + (Number(t.subtotal ?? t.total ?? 0) || 0), 0);
   const totalTransaksi = state.transactions.length;
   const totalCASH = state.transactions.reduce((sum, t) => {
     const qris = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
@@ -22,11 +23,23 @@ function renderHistory() {
     const qrisAmt = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
     return sum + qrisAmt;
   }, 0);
+  const totalHPP = state.transactions.reduce((sum, t) => sum + (t.items || []).reduce((s, i) => s + (Number(i.costPrice || 0) * (Number(i.qty) || 0)), 0), 0);
+  const totalDiskon = state.transactions.reduce((sum, t) => sum + (Number(t.discountAmount) || 0), 0);
+  const labaKotor = totalIncome - totalHPP;
+  const totalPengeluaran = (state.pengeluaran || [])
+    .filter(p => p.sessionId === state.currentSession.id)
+    .reduce((sum, p) => sum + (Number(p.nominal) || 0), 0);
+  const kasBersih = totalCASH - totalPengeluaran;
+  const modalAwal = Number(state.currentSession.modalAwal || 0);
+  const kasSeharusnya = modalAwal + kasBersih;
   const recap = {};
   state.transactions.forEach(t => t.items.forEach(i => {
-    if (!recap[i.name]) recap[i.name] = { qty: 0, total: 0 };
+    if (!recap[i.name]) recap[i.name] = { qty: 0, total: 0, hpp: 0 };
+    const gross = (i.price + (i.modifierTotal || 0)) * i.qty;
+    const net = i.netSubtotal ?? Math.max(0, gross - (i.discountAmount || 0));
     recap[i.name].qty += i.qty;
-    recap[i.name].total += i.price * i.qty;
+    recap[i.name].total += net;
+    recap[i.name].hpp += (Number(i.costPrice || 0) * i.qty);
   }));
   const sortedTransactions = SortableTable.sort(state.transactions, 'transactions');
   const content = `
@@ -39,7 +52,7 @@ function renderHistory() {
       </div>
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-label">Total Penjualan</div>
+          <div class="stat-label">Penjualan Bersih</div>
           <div class="stat-value">Rp ${Utils.formatRupiah(totalIncome)}</div>
         </div>
         <div class="stat-card">
@@ -54,6 +67,44 @@ function renderHistory() {
           <div class="stat-label">QRIS</div>
           <div class="stat-value">Rp ${Utils.formatRupiah(totalQRIS)}</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label">Diskon</div>
+          <div class="stat-value">Rp ${Utils.formatRupiah(totalDiskon)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">HPP</div>
+          <div class="stat-value">Rp ${Utils.formatRupiah(totalHPP)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Laba Kotor</div>
+          <div class="stat-value">Rp ${Utils.formatRupiah(labaKotor)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Pengeluaran</div>
+          <div class="stat-value text-danger">-Rp ${Utils.formatRupiah(totalPengeluaran)}</div>
+        </div>
+      </div>
+      <div class="history-cash-summary">
+        <div>
+          <span class="history-cash-summary-label">Kas Bersih</span>
+          <strong>Rp ${Utils.formatRupiah(kasBersih)}</strong>
+          <small>CASH − Pengeluaran</small>
+        </div>
+        <div>
+          <span class="history-cash-summary-label">Modal Awal</span>
+          <strong>Rp ${Utils.formatRupiah(modalAwal)}</strong>
+          <small>Modal saat buka shift</small>
+        </div>
+        <div>
+          <span class="history-cash-summary-label">Kas Seharusnya di Laci</span>
+          <strong>Rp ${Utils.formatRupiah(kasSeharusnya)}</strong>
+          <small>Modal awal + kas bersih</small>
+        </div>
+      </div>
+      <div class="history-sales-breakdown">
+        <span>Penjualan Kotor <strong>Rp ${Utils.formatRupiah(totalSubtotal)}</strong></span>
+        <span>− Diskon <strong>Rp ${Utils.formatRupiah(totalDiskon)}</strong></span>
+        <span>= Penjualan Bersih <strong>Rp ${Utils.formatRupiah(totalIncome)}</strong></span>
       </div>
       <div class="recap-section">
         <h3><i class="fas fa-chart-bar"></i> Rekap Produk</h3>
@@ -66,7 +117,8 @@ function renderHistory() {
                   <div class="recap-name">${name}</div>
                   <div class="recap-detail">
                     <span>${recap[name].qty} pcs</span>
-                    <span>Rp ${Utils.formatRupiah(recap[name].total)}</span>
+                    <span>Jual Rp ${Utils.formatRupiah(recap[name].total)}</span>
+                    <span>HPP Rp ${Utils.formatRupiah(recap[name].hpp)}</span>
                   </div>
                 </div>
               `).join('')}
@@ -113,7 +165,7 @@ function renderHistory() {
                          onchange="toggleSelect('${t.id}')" onclick="event.stopPropagation()">
                   <span class="ml-2">${tgl.toLocaleTimeString('id-ID')}</span>
                 </td>
-                <td class="td-base" data-label="Meja">${t.mejaNama || 'Take Away'}</td>
+                <td class="td-base" data-label="Meja">${getTransactionMejaLabel(t)}</td>
                 <td class="td-base fw-bold text-primary" data-label="Total">Rp ${Utils.formatRupiah(t.total)}</td>
                 <td class="td-base table-nowrap table-actions" data-label="Aksi">
                   <button class="btn btn-icon-sm" onclick="showDetailModal('${t.id}'); event.stopPropagation()" title="Detail">
@@ -141,6 +193,24 @@ function renderHistory() {
       newMainContent.scrollTop = lastHistoryScrollPosition;
     }
   });
+}
+
+function getHistorySessionForTransaction(trx) {
+  if (!trx) return null;
+  if (state.currentSession?.id === trx.sessionId) return state.currentSession;
+  return (state.allSessions || []).find(s => s.id === trx.sessionId) || null;
+}
+
+function getTransactionKasirName(trx) {
+  const session = getHistorySessionForTransaction(trx);
+  return trx.kasirNama || session?.kasir || trx.kasirAkun || trx.kasir || '-';
+}
+
+function getTransactionMejaLabel(trx) {
+  if (!trx?.mejaNama && !trx?.mejaNomor) return 'Take Away';
+  if (trx.mejaNomor && trx.mejaNama) return `Meja ${trx.mejaNomor} - ${trx.mejaNama}`;
+  if (trx.mejaNomor) return `Meja ${trx.mejaNomor}`;
+  return `Meja - ${trx.mejaNama}`;
 }
 
 function showDetailModal(trxId) {
@@ -193,11 +263,11 @@ function showDetailModal(trxId) {
           </div>
           <div>
             <div class="trx-info-label">Kasir</div>
-            <div class="trx-info-value">${trx.kasir}</div>
+            <div class="trx-info-value">${getTransactionKasirName(trx)}</div>
           </div>
           <div>
             <div class="trx-info-label">Meja</div>
-            <div class="trx-info-value">${trx.mejaNama || 'Take Away'}</div>
+            <div class="trx-info-value">${getTransactionMejaLabel(trx)}</div>
           </div>
         </div>
       </div>
@@ -217,6 +287,11 @@ function showDetailModal(trxId) {
           ${itemsHTML}
         </tbody>
         <tfoot>
+          <tr>
+            <td colspan="4" class="text-right">Subtotal</td>
+            <td class="text-right">Rp ${Utils.formatRupiah(trx.subtotal ?? trx.total)}</td>
+          </tr>
+          ${(trx.discountAmount || 0) > 0 ? `<tr><td colspan="4" class="text-right text-danger">Diskon ${trx.discountType === 'percent' ? `(${trx.discountValue}%)` : ''}</td><td class="text-right text-danger">-Rp ${Utils.formatRupiah(trx.discountAmount)}</td></tr>` : ''}
           <tr class="tfoot-total">
             <td colspan="4" class="text-right td-bold">Total</td>
             <td class="text-right td-total-value">Rp ${Utils.formatRupiah(trx.total)}</td>
@@ -331,61 +406,78 @@ async function deleteSelected() {
   if (mainContent) lastHistoryScrollPosition = mainContent.scrollTop;
 
   try {
-    const batch = dbCloud.batch();
+    const estimatedWrites = fromActiveShift.reduce((total, trx) => {
+      let writes = 2;
+      for (const item of trx.items || []) {
+        writes += (item.recipeSnapshot || []).length;
+        for (const mod of item.modifiers || []) writes += (mod.resep || []).length;
+      }
+      return total + writes;
+    }, 0);
+    if (estimatedWrites > 400) {
+      Utils.showToast('Terlalu banyak transaksi untuk satu penghapusan. Pilih lebih sedikit transaksi.', 'warning');
+      return;
+    }
 
+    const transactionRefs = fromActiveShift.map(trx => dbCloud.collection('transactions').doc(trx.id));
+    const stockAdds = new Map();
+    const productAdds = new Map();
     for (const trx of fromActiveShift) {
-      if (!trx.items) continue;
-      for (const item of trx.items) {
+      for (const item of trx.items || []) {
         const produk = state.menus.find(m => m.id === item.id);
-        if (!produk) continue;
-
-        if (produk.useStock) {
-          batch.update(dbCloud.collection('menus').doc(item.id), {
-            stock: firebase.firestore.FieldValue.increment(item.qty)
-          });
+        if (produk?.useStock) productAdds.set(item.id, (productAdds.get(item.id) || 0) + Number(item.qty || 0));
+        const recipe = item.recipeSnapshot || produk?.resep || [];
+        for (const bahan of recipe) {
+          const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
+          stockAdds.set(bahan.bahanId, (stockAdds.get(bahan.bahanId) || 0) + qty);
         }
-
-        if (produk.resep && produk.resep.length > 0) {
-          for (const bahan of produk.resep) {
-            batch.update(dbCloud.collection('raw_materials').doc(bahan.bahanId), {
-              stock: firebase.firestore.FieldValue.increment(bahan.qty * item.qty)
-            });
-          }
-        }
-
-        for (const mod of (item.modifiers || [])) {
-          if (!mod.resep || mod.resep.length === 0) continue;
-          for (const bahan of mod.resep) {
-            batch.update(dbCloud.collection('raw_materials').doc(bahan.bahanId), {
-              stock: firebase.firestore.FieldValue.increment(bahan.qty * item.qty)
-            });
+        for (const mod of item.modifiers || []) {
+          for (const bahan of mod.resep || []) {
+            const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
+            stockAdds.set(bahan.bahanId, (stockAdds.get(bahan.bahanId) || 0) + qty);
           }
         }
       }
-      batch.delete(dbCloud.collection('transactions').doc(trx.id));
     }
 
-    await batch.commit();
+    await dbCloud.runTransaction(async tx => {
+      const refs = new Map();
+      for (const id of stockAdds.keys()) refs.set(`raw:${id}`, dbCloud.collection('raw_materials').doc(id));
+      for (const id of productAdds.keys()) refs.set(`menu:${id}`, dbCloud.collection('menus').doc(id));
+      for (const ref of transactionRefs) await tx.get(ref);
+      for (const ref of refs.values()) await tx.get(ref);
+      for (const [id, qty] of stockAdds) tx.update(refs.get(`raw:${id}`), { stock: firebase.firestore.FieldValue.increment(qty) });
+      for (const [id, qty] of productAdds) tx.update(refs.get(`menu:${id}`), { stock: firebase.firestore.FieldValue.increment(qty) });
+      const sessionRef = dbCloud.collection('sessions').doc(activeSessionId);
+      const sessionSnap = await tx.get(sessionRef);
+      if (!sessionSnap.exists || sessionSnap.data().status !== 'active') throw new Error('SHIFT_CLOSED');
+      const removedSales = fromActiveShift.reduce((sum, trx) => sum + Number(trx.total || 0), 0);
 
-    const trxIds = new Set(fromActiveShift.map(t => t.id));
-    const mutasiIds = (state.stockMutations || [])
-      .filter(m => m.source === 'sale' && trxIds.has(m.transactionId))
-      .map(m => m.id);
-    if (mutasiIds.length > 0) {
-      const bMutasi = dbCloud.batch();
-      mutasiIds.forEach(id => bMutasi.delete(dbCloud.collection('stock_mutations').doc(id)));
-      await bMutasi.commit();
-    }
-
-    if (typeof window.updateAllProductStocks === 'function') {
-      await window.updateAllProductStocks();
-    }
+      for (const trx of fromActiveShift) {
+        for (const item of trx.items || []) {
+          for (const bahan of item.recipeSnapshot || []) {
+            tx.set(dbCloud.collection('stock_mutations').doc(), { type: 'in', source: 'sale_reversal', bahanId: bahan.bahanId, namaBahan: bahan.nama, qty: Number(bahan.qty || 0) * Number(item.qty || 0), satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: item.name, transactionId: trx.id, userId: state.user.email, createdAt: new Date() });
+          }
+          for (const mod of item.modifiers || []) {
+            for (const bahan of mod.resep || []) {
+              tx.set(dbCloud.collection('stock_mutations').doc(), { type: 'in', source: 'sale_reversal', bahanId: bahan.bahanId, namaBahan: bahan.namaBahan, qty: Number(bahan.qty || 0) * Number(item.qty || 0), satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: item.name, modifierId: mod.optionId, namaModifier: mod.optionName, transactionId: trx.id, userId: state.user.email, createdAt: new Date() });
+            }
+          }
+        }
+        tx.delete(dbCloud.collection('transactions').doc(trx.id));
+      }
+      tx.update(sessionRef, {
+        totalPenjualan: firebase.firestore.FieldValue.increment(-removedSales),
+        jumlahTransaksi: firebase.firestore.FieldValue.increment(-fromActiveShift.length),
+        updatedAt: new Date()
+      });
+    });
 
     state.selectedHistory.clear();
     Utils.showToast(`${fromActiveShift.length} transaksi dihapus & stok dikembalikan`, 'success');
     renderHistory();
   } catch (error) {
-    Utils.showToast('Gagal: ' + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -399,7 +491,7 @@ async function reprintReceipt(trxId) {
     if (!trx) return;
     if (typeof window.printStruk === 'function') await window.printStruk(trx);
   } catch (error) {
-    Utils.showToast('Gagal cetak ulang: ' + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error, 'Gagal mencetak ulang transaksi. Silakan coba lagi.'), 'error');
   }
 }
 
@@ -413,7 +505,7 @@ async function cetakRekapSesi() {
       await window.printRekapSesi(state.currentSession, state.transactions);
     }
   } catch (error) {
-    Utils.showToast('Gagal cetak rekap: ' + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error, 'Gagal mencetak rekap. Periksa koneksi printer lalu coba lagi.'), 'error');
   }
 }
 
@@ -575,7 +667,7 @@ async function saveEditPayment(trxId, btnRef) {
     Utils.showToast("Pembayaran berhasil diupdate", "success");
     btnRef.closest('.modal-overlay').remove();
   } catch (e) {
-    Utils.showToast("Gagal update pembayaran: " + e.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(e, 'Gagal memperbarui pembayaran. Silakan coba lagi.'), 'error');
   }
 }
 

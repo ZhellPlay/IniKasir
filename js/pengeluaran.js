@@ -152,7 +152,7 @@ async function tambahPengeluaran() {
     document.getElementById('inputNamaPengeluaran')?.focus();
     Utils.showToast('Pengeluaran ditambahkan', 'success');
   } catch (error) {
-    Utils.showToast('Gagal: ' + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -192,7 +192,7 @@ async function simpanEditPengeluaran(id) {
     await dbCloud.collection('pengeluaran').doc(id).update({ nama, nominal });
     Utils.showToast('Pengeluaran diperbarui', 'success');
   } catch (error) {
-    Utils.showToast('Gagal: ' + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 
@@ -202,7 +202,7 @@ async function hapusPengeluaran(id) {
     await dbCloud.collection('pengeluaran').doc(id).delete();
     Utils.showToast('Pengeluaran dihapus', 'success');
   } catch (error) {
-    Utils.showToast('Gagal: ' + error.message, 'error');
+    Utils.showToast(Utils.getFriendlyError(error), 'error');
   }
 }
 

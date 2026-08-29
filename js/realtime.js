@@ -1,6 +1,7 @@
 function startRealtimeCategories() {
     const unsubscribe = dbCloud.collection("categories").onSnapshot(async snap => {
-        state.categories = [];
+        try {
+            state.categories = [];
         snap.forEach(doc => state.categories.push({ id: doc.id, ...doc.data() }));
         const systemCats = state.categories.filter(c => c.system === true);
         if (systemCats.length === 0) {
@@ -9,7 +10,10 @@ function startRealtimeCategories() {
             const toDelete = systemCats.slice(1);
             await Promise.all(toDelete.map(c => dbCloud.collection("categories").doc(c.id).delete()));
         }
-        safeRender();
+            safeRender();
+        } catch (error) {
+            Utils.showToast('Gagal menyegarkan kategori: ' + (error?.message || 'kesalahan tidak diketahui'), 'error');
+        }
     });
     addListener(unsubscribe);
 }
@@ -17,7 +21,11 @@ function startRealtimeCategories() {
 function startRealtimeMenus() {
     const unsubscribe = dbCloud.collection("menus").onSnapshot(snap => {
         state.menus = [];
-        snap.forEach(doc => state.menus.push({ id: doc.id, ...doc.data() }));
+        snap.forEach(doc => {
+            const d = doc.data();
+            const salePrice = Number(d.salePrice ?? d.price ?? 0);
+            state.menus.push({ id: doc.id, ...d, price: salePrice, salePrice, costPrice: Number(d.costPrice ?? d.hargaModal ?? 0) });
+        });
         safeRender();
     });
     addListener(unsubscribe);
@@ -40,7 +48,8 @@ function startRealtimeTransactions() {
 
 function startRealtimeRawMaterials() {
     const unsubscribe = dbCloud.collection("raw_materials").onSnapshot(async snap => {
-        const beforeCount = state.rawMaterials.length;
+        try {
+            const beforeCount = state.rawMaterials.length;
         state.rawMaterials = [];
         snap.forEach(doc => state.rawMaterials.push({ id: doc.id, ...doc.data() }));
         const adaPerubahan = beforeCount !== state.rawMaterials.length ||
@@ -53,7 +62,10 @@ function startRealtimeRawMaterials() {
         }
         checkLowStockAlert();
         if (state.currentView === "bahanManager") renderBahanManager();
-        if (state.currentView === "kasir") renderKasir();
+            if (state.currentView === "kasir") renderKasir();
+        } catch (error) {
+            Utils.showToast('Gagal menyegarkan stok: ' + (error?.message || 'kesalahan tidak diketahui'), 'error');
+        }
     });
     addListener(unsubscribe);
 }
@@ -61,7 +73,7 @@ function startRealtimeRawMaterials() {
 function startRealtimeStockMutations() {
     const unsubscribe = dbCloud.collection("stock_mutations")
         .orderBy("createdAt", "desc")
-        .limit(500)
+        .limit(2000)
         .onSnapshot(snap => {
             state.stockMutations = [];
             snap.forEach(doc => state.stockMutations.push({ id: doc.id, ...doc.data() }));
@@ -117,7 +129,7 @@ function startRealtimeOpenBills() {
 function startRealtimeSessions() {
     const unsubscribe = dbCloud.collection("sessions")
         .orderBy("waktuBuka", "desc")
-        .limit(90)
+        .limit(500)
         .onSnapshot(snap => {
             state.allSessions = [];
             snap.forEach(doc => state.allSessions.push({ id: doc.id, ...doc.data() }));
@@ -138,11 +150,11 @@ function _refreshOpenBillBadges() {
 function checkLowStockAlert() {
     const lowStock = state.rawMaterials.filter(m => m.stock <= (m.minStock || 5));
     if (lowStock.length > 0 && state.currentView !== 'bahanManager') {
-        const lastAlert = localStorage.getItem('lastLowStockAlert');
+        const lastAlert = Utils.storage.get('lastLowStockAlert');
         const now = Date.now();
         if (!lastAlert || (now - parseInt(lastAlert)) > 3600000) {
             Utils.showToast(`${lowStock.length} bahan menipis`, 'warning');
-            localStorage.setItem('lastLowStockAlert', now.toString());
+            Utils.storage.set('lastLowStockAlert', now.toString());
         }
     }
 }
@@ -163,7 +175,11 @@ async function updateAllProductStocks() {
         }
     }
     if (updatedCount > 0) {
-        try { await batch.commit(); } catch (error) {}
+        try {
+            await batch.commit();
+        } catch (error) {
+            Utils.showToast('Gagal memperbarui stok otomatis: ' + (error?.message || 'kesalahan tidak diketahui'), 'error');
+        }
     }
 }
 
