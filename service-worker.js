@@ -2,12 +2,12 @@ const CACHE_NAME = 'ini-kasir-v3';
 const externalUrlsToCache = [
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-  'https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css',
+  'https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.min.css',
   'https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js',
   'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js',
   'https://www.gstatic.com/firebasejs/11.6.0/firebase-analytics-compat.js',
-  'https://cdn.jsdelivr.net/npm/sweetalert2@11',
+  'https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js',
   'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
@@ -25,6 +25,7 @@ const urlsToCache = [
   'logo-maskable.png',
   'js/init.js',
   'js/utils.js',
+  'js/offline.js',
   'js/layout.js',
   'js/sortableTable.js',
   'js/state.js',
@@ -55,7 +56,7 @@ self.addEventListener('install', event => {
         try {
           const response = await fetch(url, { cache: 'no-store' });
           if (response.ok || response.type === 'opaque') await cache.put(url, response);
-        } catch (_) {}
+        } catch (_) { }
       }));
     }).then(() => self.skipWaiting())
   );
@@ -93,7 +94,7 @@ self.addEventListener('fetch', event => {
       caches.match(event.request).then(cached => {
         const network = fetch(event.request).then(response => {
           if (response && (response.ok || response.type === 'opaque')) {
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone())).catch(() => {});
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone())).catch(() => { });
           }
           return response;
         }).catch(() => cached);
@@ -117,7 +118,7 @@ self.addEventListener('fetch', event => {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_NAME)
             .then(cache => cache.put(event.request, responseClone))
-            .catch(() => {});
+            .catch(() => { });
 
           return networkResponse;
         });

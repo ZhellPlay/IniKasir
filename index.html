@@ -19,14 +19,12 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="style-upgrade.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.min.css">
 </head>
 
 <body>
   <div id="app"></div>
-  <div id="modal-container"></div>
   <div id="toast-container"></div>
-  <div id="print-notifications"></div>
 
   <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js"></script>
@@ -45,12 +43,13 @@
     firebase.initializeApp(firebaseConfig);
     firebase.analytics();
     window.dbCloud = firebase.firestore();
+    dbCloud.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
     dbCloud.enablePersistence({ synchronizeTabs: true }).catch(() => {
       document.documentElement.dataset.persistenceFallback = 'true';
     });
   </script>
 
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
@@ -58,6 +57,7 @@
 
   <script src="js/init.js" defer></script>
   <script src="js/utils.js" defer></script>
+  <script src="js/offline.js" defer></script>
   <script src="js/layout.js" defer></script>
   <script src="js/sortableTable.js" defer></script>
   <script src="js/state.js" defer></script>
