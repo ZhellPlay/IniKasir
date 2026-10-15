@@ -14,21 +14,21 @@ function renderModifierManager() {
   const groups = state.modifierGroups || [];
 
   const filteredGroups = !(_modSearchQuery || '').trim() ? groups :
-    groups.filter(g => g.name.toLowerCase().includes(_modSearchQuery.toLowerCase()) || 
-                      (g.options || []).some(o => o.name.toLowerCase().includes(_modSearchQuery.toLowerCase())));
+    groups.filter(g => g.name.toLowerCase().includes(_modSearchQuery.toLowerCase()) ||
+      (g.options || []).some(o => o.name.toLowerCase().includes(_modSearchQuery.toLowerCase())));
 
   const content = `
     <div class="stack-y">
       <div class="management-control-bar">
         <div class="search-wrapper">
           <i class="fas fa-search"></i>
-          <input type="text" class="search-input" placeholder="Cari modifier..." 
+          <input type="text" class="search-input" placeholder="Cari varian/tambahan..."
                  value="${_modSearchQuery}" oninput="window._onModSearch(this.value)">
         </div>
-        
+
         <div class="management-stats">
           <div class="stat-item">
-            <i class="fas fa-layer-group"></i> <span class="text-muted">Total:</span> <span>${groups.length} Group</span>
+            <i class="fas fa-layer-group"></i> <span class="text-muted">Total:</span> <span>${groups.length} Kelompok</span>
           </div>
           ${_modSearchQuery ? `
             <div class="stat-divider"></div>
@@ -40,22 +40,19 @@ function renderModifierManager() {
 
         <div class="management-actions">
           <button class="btn btn-primary" onclick="showAddModifierGroupModal()">
-            <i class="fas fa-plus"></i> Tambah Group
+            <i class="fas fa-plus"></i> Tambah Varian/Tambahan
           </button>
         </div>
       </div>
 
       ${filteredGroups.length === 0 ? `
-        <div class="empty-center">
-          <div class="empty-state large">
-            <i class="fas ${_modSearchQuery ? 'fa-search' : 'fa-sliders-h'}"></i>
-            <h2>${_modSearchQuery ? 'Modifier Tidak Ditemukan' : 'Belum Ada Modifier'}</h2>
-            <p>${_modSearchQuery ? `Tidak ada hasil untuk "${_modSearchQuery}"` : 'Buat modifier group untuk add-on atau pilihan menu'}</p>
-            ${_modSearchQuery ? `
-              <button class="btn btn-secondary btn-sm" onclick="window._onModSearch('')">Reset Pencarian</button>
-            ` : ''}
-          </div>
-        </div>
+        ${Utils.managementEmptyState({
+    icon: 'fa-sliders-h',
+    title: 'Belum Ada Varian/Tambahan',
+    description: 'Buat kelompok varian/tambahan untuk pilihan menu.',
+    searchQuery: _modSearchQuery,
+    resetHandler: "window._onModSearch('')"
+  })}
       ` : `
         <div class="modifier-group-list">
           ${filteredGroups.map(g => _renderGroupCard(g)).join('')}
@@ -75,7 +72,7 @@ function _renderGroupCard(group) {
     <div class="modifier-group-card card">
       <div class="modifier-group-header">
         <div class="modifier-group-info">
-          <div class="modifier-group-name">${group.name}</div>
+          <div class="modifier-group-name">${Utils.escapeHtml(group.name)}</div>
           <div class="modifier-group-badges">
             <span class="badge ${group.required ? 'badge-danger' : 'badge-secondary'}">
               ${group.required ? 'Wajib' : 'Opsional'}
@@ -96,9 +93,12 @@ function _renderGroupCard(group) {
         ${(group.options || []).map(opt => `
           <div class="modifier-option-chip">
             ${opt.isDefault ? '<i class="fas fa-check-circle text-success"></i>' : ''}
-            <span>${opt.name}</span>
+            <span>${Utils.escapeHtml(opt.name)}</span>
             <span class="modifier-option-price-chip">
-              ${opt.price > 0 ? `+Rp ${Utils.formatRupiah(opt.price)}` : 'Gratis'}
+              Jual +Rp ${Utils.formatRupiah(opt.price || 0)}
+            </span>
+            <span class="modifier-option-cost-chip">
+              Modal Rp ${Utils.formatRupiah(opt.costPrice || 0)}
             </span>
             ${(opt.resep && opt.resep.length > 0) ? `
               <span class="badge badge-info" title="Punya resep bahan">
@@ -140,7 +140,7 @@ function _getBahanOptions(selectedId = '') {
   if (bahans.length === 0) return '<option value="">Belum ada bahan</option>';
   return `<option value="">Pilih Bahan</option>` +
     bahans.map(b =>
-      `<option value="${b.id}" data-satuan="${b.satuan || 'pcs'}" ${b.id === selectedId ? 'selected' : ''}>${b.name} (${b.satuan || 'pcs'})</option>`
+      `<option value="${b.id}" data-satuan="${Utils.escapeHtml(b.satuan || 'pcs')}" ${b.id === selectedId ? 'selected' : ''}>${Utils.escapeHtml(b.name)} (${Utils.escapeHtml(b.satuan || 'pcs')})</option>`
     ).join('');
 }
 
@@ -203,10 +203,20 @@ function _optionRowHtml(idx, opt = {}) {
   return `
     <div class="modifier-option-row-wrap border-bottom-light" data-id="${opt.id || ''}" id="opt-row-${idx}">
       <div class="modifier-option-row mb-sm">
-        <input type="text" class="form-input opt-name" placeholder="Nama opsi" value="${opt.name || ''}">
-        <div class="input-currency-wrapper">
-          <span class="input-currency-prefix">Rp</span>
-          <input type="number" class="form-input opt-price input-with-currency" placeholder="0" value="${opt.price === undefined ? '' : opt.price}" min="0">
+        <input type="text" class="form-input opt-name" placeholder="Nama opsi" value="${Utils.escapeHtml(opt.name || '')}">
+        <div class="modifier-price-field">
+          <label class="modifier-price-label">Harga Modal</label>
+          <div class="input-currency-wrapper">
+            <span class="input-currency-prefix">Rp</span>
+            <input type="number" class="form-input opt-cost-price input-with-currency" placeholder="0" value="${opt.costPrice === undefined ? '' : opt.costPrice}" min="0">
+          </div>
+        </div>
+        <div class="modifier-price-field">
+          <label class="modifier-price-label">Harga Jual</label>
+          <div class="input-currency-wrapper">
+            <span class="input-currency-prefix">Rp</span>
+            <input type="number" class="form-input opt-price input-with-currency" placeholder="0" value="${opt.price === undefined ? '' : opt.price}" min="0">
+          </div>
         </div>
         <label class="modifier-default-label">
           <input type="checkbox" class="opt-default" ${opt.isDefault ? 'checked' : ''}> Default
@@ -218,29 +228,6 @@ function _optionRowHtml(idx, opt = {}) {
       ${_resepSectionHtml(idx, opt.resep || [])}
     </div>
   `;
-}
-
-function _collectResep(optIdx) {
-  const container = document.getElementById(`resep-container-${optIdx}`);
-  if (!container) return [];
-  const resep = [];
-  container.querySelectorAll('.recipe-row').forEach(row => {
-    const bahanSel = row.querySelector('.opt-resep-bahan');
-    const qtyInput = row.querySelector('.opt-resep-qty');
-    const satuanEl = row.querySelector('.opt-resep-satuan');
-    const bahanId = bahanSel?.value;
-    const qty = parseFloat(qtyInput?.value) || 0;
-    if (bahanId && qty > 0) {
-      const bahan = (state.rawMaterials || []).find(b => b.id === bahanId);
-      resep.push({
-        bahanId,
-        namaBahan: bahan?.name || '',
-        qty,
-        satuan: satuanEl?.textContent?.trim() || bahan?.satuan || 'pcs'
-      });
-    }
-  });
-  return resep;
 }
 
 function _collectResepFromRow(optWrapRow) {
@@ -272,10 +259,11 @@ function _collectOptions(containerSelector) {
   rows.forEach((row) => {
     const name = row.querySelector('.opt-name')?.value?.trim();
     const price = parseInt(row.querySelector('.opt-price')?.value) || 0;
+    const costPrice = parseInt(row.querySelector('.opt-cost-price')?.value) || 0;
     const isDefault = row.querySelector('.opt-default')?.checked || false;
     const id = row.dataset.id || _genId();
     const resep = _collectResepFromRow(row);
-    if (name) options.push({ id, name, price, isDefault, resep });
+    if (name) options.push({ id, name, price, costPrice, isDefault, resep });
   });
   return options;
 }
@@ -323,20 +311,20 @@ function _menuChecklistHtml(checkedIds = [], cssClass = 'mg-menu-check') {
         <input id="${searchId}" class="form-input" type="search" placeholder="Cari menu..." oninput="window._filterModifierMenus('${safeClass}')">
         <select id="${categoryId}" class="form-input" onchange="window._filterModifierMenus('${safeClass}')">
           <option value="">Semua Kategori</option>
-          ${categories.map(([id, name]) => `<option value="${id}">${name}</option>`).join('')}
+          ${categories.map(([id, name]) => `<option value="${id}">${Utils.escapeHtml(name)}</option>`).join('')}
         </select>
       </div>
       <small class="modifier-menu-link-count" id="${safeClass}-count">${checkedIds.length} menu dipilih dari ${menus.length}</small>
       <div class="modifier-menu-link-grid">
         ${menus.map(m => {
-          const category = (state.categories || []).find(c => c.id === m.categoryId);
-          return `
+    const category = (state.categories || []).find(c => c.id === m.categoryId);
+    return `
             <label class="checkbox-label mg-menu-option" data-menu-name="${m.name.toLowerCase()}" data-category-id="${String(m.categoryId || 'uncategorized')}">
               <input type="checkbox" class="${cssClass}" value="${m.id}" ${checkedIds.includes(m.id) ? 'checked' : ''} onchange="window._updateModifierMenuCount('${safeClass}')">
-              <span><strong>${m.name}</strong><small>${category?.name || 'Tanpa Kategori'}</small></span>
+              <span><strong>${Utils.escapeHtml(m.name)}</strong><small>${category?.name || 'Tanpa Kategori'}</small></span>
             </label>
           `;
-        }).join('')}
+  }).join('')}
       </div>
     </div>
   `;
@@ -367,8 +355,8 @@ function showAddModifierGroupModal() {
   _optRowIdx = 1;
   const body = `
     <div class="form-group">
-      <label class="form-label">Nama Group Modifier</label>
-      <input type="text" id="mgNama" class="form-input" placeholder="cth: Pilihan Nasi, Tambahan Topping">
+      <label class="form-label">Nama Varian/Tambahan</label>
+      <input type="text" id="mgNama" class="form-input" placeholder="cth: Nasi, Topping, Ukuran">
     </div>
     <div class="form-row-equal">
       <div class="form-group">
@@ -397,7 +385,7 @@ function showAddModifierGroupModal() {
       ${_menuChecklistHtml()}
     </div>
   `;
-  _buildModalShell('modal-add-modifier', '<i class="fas fa-plus"></i> Tambah Modifier Group', body, '<button class="btn btn-secondary" onclick="document.getElementById(\'modal-add-modifier\').remove()">Batal</button><button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveNewModifierGroup().finally(()=>Utils.setButtonLoading(b,false))"><i class="fas fa-save"></i> Simpan</button>');
+  _buildModalShell('modal-add-modifier', '<i class="fas fa-plus"></i> Tambah Varian/Tambahan', body, '<button class="btn btn-secondary" onclick="document.getElementById(\'modal-add-modifier\').remove()">Batal</button><button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveNewModifierGroup().finally(()=>Utils.setButtonLoading(b,false))"><i class="fas fa-save"></i> Simpan</button>');
 }
 
 window._addOptRow = function() {
@@ -411,7 +399,7 @@ window._addOptRow = function() {
 
 async function saveNewModifierGroup() {
   const nama = document.getElementById('mgNama')?.value?.trim();
-  if (!nama) { Utils.showToast('Nama group wajib diisi', 'warning'); return; }
+  if (!nama) { Utils.showToast('Nama varian/tambahan wajib diisi', 'warning'); return; }
   const required = document.getElementById('mgRequired')?.value === 'true';
   const maxSelect = parseInt(document.getElementById('mgMax')?.value) || 1;
   const options = _collectOptions('#mg-opts');
@@ -427,7 +415,7 @@ async function saveNewModifierGroup() {
 
   await _syncMenuLinks(ref.id, linkedIds);
   document.getElementById('modal-add-modifier')?.remove();
-  Utils.showToast('Modifier group berhasil ditambahkan', 'success');
+  Utils.showToast('Varian/tambahan berhasil ditambahkan', 'success');
 }
 
 async function editModifierGroup(id) {
@@ -438,8 +426,8 @@ async function editModifierGroup(id) {
 
   const body = `
     <div class="form-group">
-      <label class="form-label">Nama Group Modifier</label>
-      <input type="text" id="mgEditNama" class="form-input" value="${group.name}">
+      <label class="form-label">Nama Varian/Tambahan</label>
+      <input type="text" id="mgEditNama" class="form-input" value="${Utils.escapeHtml(group.name)}">
     </div>
     <div class="form-row-equal">
       <div class="form-group">
@@ -468,7 +456,7 @@ async function editModifierGroup(id) {
       ${_menuChecklistHtml(oldLinked, 'mg-edit-menu-check')}
     </div>
   `;
-  _buildModalShell('modal-edit-modifier', '<i class="fas fa-edit"></i> Edit Modifier Group', body, `<button class="btn btn-secondary" onclick="document.getElementById('modal-edit-modifier').remove()">Batal</button><button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveEditModifierGroup('${id}').finally(()=>Utils.setButtonLoading(b,false))"><i class="fas fa-save"></i> Simpan</button>`);
+  _buildModalShell('modal-edit-modifier', '<i class="fas fa-edit"></i> Edit Varian/Tambahan', body, `<button class="btn btn-secondary" onclick="document.getElementById('modal-edit-modifier').remove()">Batal</button><button class="btn btn-primary" onclick="const b=this;Utils.setButtonLoading(b,true);saveEditModifierGroup('${id}').finally(()=>Utils.setButtonLoading(b,false))"><i class="fas fa-save"></i> Simpan</button>`);
   window._editModGroupOldLinked = oldLinked;
 }
 
@@ -483,7 +471,7 @@ window._addEditOptRow = function() {
 
 async function saveEditModifierGroup(id) {
   const nama = document.getElementById('mgEditNama')?.value?.trim();
-  if (!nama) { Utils.showToast('Nama group wajib diisi', 'warning'); return; }
+  if (!nama) { Utils.showToast('Nama varian/tambahan wajib diisi', 'warning'); return; }
   const required = document.getElementById('mgEditRequired')?.value === 'true';
   const maxSelect = parseInt(document.getElementById('mgEditMax')?.value) || 1;
   const options = _collectOptions('#mg-edit-opts');
@@ -499,13 +487,13 @@ async function saveEditModifierGroup(id) {
 
   await _syncMenuLinks(id, newLinked, oldLinked);
   document.getElementById('modal-edit-modifier')?.remove();
-  Utils.showToast('Modifier group berhasil diupdate', 'success');
+  Utils.showToast('Varian/tambahan berhasil diperbarui', 'success');
 }
 
 async function deleteModifierGroup(id) {
   const result = await Swal.fire({
-    title: 'Hapus Modifier Group?',
-    text: 'Menu yang terhubung akan kehilangan modifier ini.',
+    title: 'Hapus Kelompok?',
+    text: 'Menu yang terhubung akan kehilangan kelompok ini.',
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: 'Hapus',
@@ -516,18 +504,20 @@ async function deleteModifierGroup(id) {
   if (!result.isConfirmed) return;
 
   const linked = (state.menus || []).filter(m => (m.modifierGroupIds || []).includes(id));
-  if (linked.length > 0) {
+  try {
     const batch = dbCloud.batch();
     linked.forEach(menu => {
       batch.update(dbCloud.collection('menus').doc(menu.id), {
         modifierGroupIds: (menu.modifierGroupIds || []).filter(gid => gid !== id)
       });
     });
+    batch.delete(dbCloud.collection('modifierGroups').doc(id));
     await batch.commit();
+  } catch (error) {
+    Utils.showToast(Utils.getFriendlyError(error, 'Gagal menghapus varian/tambahan.'), 'error');
+    return;
   }
-
-  await dbCloud.collection('modifierGroups').doc(id).delete();
-  Utils.showToast('Modifier group dihapus', 'success');
+  Utils.showToast('Varian/tambahan dihapus', 'success');
 }
 
 window.renderModifierManager = renderModifierManager;

@@ -23,15 +23,14 @@ function renderHistory() {
     const qrisAmt = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
     return sum + qrisAmt;
   }, 0);
-  const totalHPP = state.transactions.reduce((sum, t) => sum + (t.items || []).reduce((s, i) => s + (Number(i.costPrice || 0) * (Number(i.qty) || 0)), 0), 0);
+  const totalHPP = state.transactions.reduce((sum, t) => sum + (t.items || []).reduce((s, i) => s + Utils.calculateItemHpp(i), 0), 0);
   const totalDiskon = state.transactions.reduce((sum, t) => sum + (Number(t.discountAmount) || 0), 0);
   const labaKotor = totalIncome - totalHPP;
   const totalPengeluaran = (state.pengeluaran || [])
     .filter(p => p.sessionId === state.currentSession.id)
     .reduce((sum, p) => sum + (Number(p.nominal) || 0), 0);
-  const kasBersih = totalCASH - totalPengeluaran;
   const modalAwal = Number(state.currentSession.modalAwal || 0);
-  const kasSeharusnya = modalAwal + kasBersih;
+  const cashBersih = modalAwal + totalCASH - totalPengeluaran;
   const recap = {};
   state.transactions.forEach(t => t.items.forEach(i => {
     if (!recap[i.name]) recap[i.name] = { qty: 0, total: 0, hpp: 0 };
@@ -39,7 +38,7 @@ function renderHistory() {
     const net = i.netSubtotal ?? Math.max(0, gross - (i.discountAmount || 0));
     recap[i.name].qty += i.qty;
     recap[i.name].total += net;
-    recap[i.name].hpp += (Number(i.costPrice || 0) * i.qty);
+    recap[i.name].hpp += Utils.calculateItemHpp(i);
   }));
   const sortedTransactions = SortableTable.sort(state.transactions, 'transactions');
   const content = `
@@ -50,8 +49,16 @@ function renderHistory() {
         </div>
         <span>Buka: ${(() => { const wb = state.currentSession.waktuBuka; const d = wb?.seconds ? new Date(wb.seconds * 1000) : wb?.toDate ? wb.toDate() : new Date(wb); return isNaN(d) ? "-" : d.toLocaleString("id-ID"); })()}</span>
       </div>
-      <div class="stats-grid">
+      <div class="stats-grid history-stats-grid">
         <div class="stat-card">
+          <div class="stat-label">Penjualan Kotor</div>
+          <div class="stat-value">Rp ${Utils.formatRupiah(totalSubtotal)}</div>
+        </div>
+        <div class="stat-card history-stat-negative">
+          <div class="stat-label">Diskon</div>
+          <div class="stat-value">-Rp ${Utils.formatRupiah(totalDiskon)}</div>
+        </div>
+        <div class="stat-card history-stat-result">
           <div class="stat-label">Penjualan Bersih</div>
           <div class="stat-value">Rp ${Utils.formatRupiah(totalIncome)}</div>
         </div>
@@ -68,43 +75,26 @@ function renderHistory() {
           <div class="stat-value">Rp ${Utils.formatRupiah(totalQRIS)}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Diskon</div>
-          <div class="stat-value">Rp ${Utils.formatRupiah(totalDiskon)}</div>
-        </div>
-        <div class="stat-card">
           <div class="stat-label">HPP</div>
           <div class="stat-value">Rp ${Utils.formatRupiah(totalHPP)}</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card history-stat-result">
           <div class="stat-label">Laba Kotor</div>
           <div class="stat-value">Rp ${Utils.formatRupiah(labaKotor)}</div>
         </div>
         <div class="stat-card">
+          <div class="stat-label">Modal Awal</div>
+          <div class="stat-value">Rp ${Utils.formatRupiah(modalAwal)}</div>
+        </div>
+        <div class="stat-card history-stat-negative">
           <div class="stat-label">Pengeluaran</div>
-          <div class="stat-value text-danger">-Rp ${Utils.formatRupiah(totalPengeluaran)}</div>
+          <div class="stat-value">-Rp ${Utils.formatRupiah(totalPengeluaran)}</div>
         </div>
-      </div>
-      <div class="history-cash-summary">
-        <div>
-          <span class="history-cash-summary-label">Kas Bersih</span>
-          <strong>Rp ${Utils.formatRupiah(kasBersih)}</strong>
-          <small>CASH − Pengeluaran</small>
+        <div class="stat-card history-stat-result history-stat-cash-net">
+          <div class="stat-label">Cash Bersih</div>
+          <div class="stat-value">Rp ${Utils.formatRupiah(cashBersih)}</div>
+          <div class="stat-note">Modal Awal + CASH − Pengeluaran</div>
         </div>
-        <div>
-          <span class="history-cash-summary-label">Modal Awal</span>
-          <strong>Rp ${Utils.formatRupiah(modalAwal)}</strong>
-          <small>Modal saat buka shift</small>
-        </div>
-        <div>
-          <span class="history-cash-summary-label">Kas Seharusnya di Laci</span>
-          <strong>Rp ${Utils.formatRupiah(kasSeharusnya)}</strong>
-          <small>Modal awal + kas bersih</small>
-        </div>
-      </div>
-      <div class="history-sales-breakdown">
-        <span>Penjualan Kotor <strong>Rp ${Utils.formatRupiah(totalSubtotal)}</strong></span>
-        <span>− Diskon <strong>Rp ${Utils.formatRupiah(totalDiskon)}</strong></span>
-        <span>= Penjualan Bersih <strong>Rp ${Utils.formatRupiah(totalIncome)}</strong></span>
       </div>
       <div class="recap-section">
         <h3><i class="fas fa-chart-bar"></i> Rekap Produk</h3>
@@ -114,11 +104,9 @@ function renderHistory() {
       '<p class="text-muted">Belum ada data</p>' :
       Object.keys(recap).sort().map(name => `
                 <div class="recap-item">
-                  <div class="recap-name">${name}</div>
+                  <div class="recap-name">${Utils.escapeHtml(name)}</div>
                   <div class="recap-detail">
                     <span>${recap[name].qty} pcs</span>
-                    <span>Jual Rp ${Utils.formatRupiah(recap[name].total)}</span>
-                    <span>HPP Rp ${Utils.formatRupiah(recap[name].hpp)}</span>
                   </div>
                 </div>
               `).join('')}
@@ -129,7 +117,7 @@ function renderHistory() {
         <button class="btn btn-secondary" onclick="toggleSelectAll()">
           ${state.selectedHistory.size === state.transactions.length ? 'Batal Pilih' : 'Pilih Semua'}
         </button>
-        <button class="btn btn-secondary ${state.selectedHistory.size > 0 ? 'btn-danger' : ''}" 
+        <button class="btn btn-secondary ${state.selectedHistory.size > 0 ? 'btn-danger' : ''}"
                 onclick="const b=this;Utils.setButtonLoading(b,true);deleteSelected().finally(()=>Utils.setButtonLoading(b,false))" ${state.selectedHistory.size === 0 ? 'disabled' : ''}>
           <i class="fas fa-trash"></i> Hapus ${state.selectedHistory.size > 0 ? `(${state.selectedHistory.size})` : ''}
         </button>
@@ -161,11 +149,11 @@ function renderHistory() {
         return `
               <tr class="neu-table-row">
                 <td class="td-base" data-label="Waktu">
-                  <input type="checkbox" ${state.selectedHistory.has(t.id) ? 'checked' : ''} 
+                  <input type="checkbox" ${state.selectedHistory.has(t.id) ? 'checked' : ''}
                          onchange="toggleSelect('${t.id}')" onclick="event.stopPropagation()">
                   <span class="ml-2">${tgl.toLocaleTimeString('id-ID')}</span>
                 </td>
-                <td class="td-base" data-label="Meja">${getTransactionMejaLabel(t)}</td>
+                <td class="td-base" data-label="Meja">${Utils.escapeHtml(getTransactionMejaLabel(t))}</td>
                 <td class="td-base fw-bold text-primary" data-label="Total">Rp ${Utils.formatRupiah(t.total)}</td>
                 <td class="td-base table-nowrap table-actions" data-label="Aksi">
                   <button class="btn btn-icon-sm" onclick="showDetailModal('${t.id}'); event.stopPropagation()" title="Detail">
@@ -228,16 +216,16 @@ function showDetailModal(trxId) {
     const subtotal = item.subtotal || (unitPrice * item.qty);
     const modHTML = (item.modifiers || []).length > 0
       ? `<div class="history-item-modifiers">${item.modifiers.map(m =>
-          `<span class="cart-modifier-tag">${m.optionName}${m.price > 0 ? ` +${Utils.formatRupiah(m.price)}` : ''}</span>`
-        ).join('')}</div>`
+        `<span class="cart-modifier-tag">${Utils.escapeHtml(m.optionName)}${m.price > 0 ? ` +${Utils.formatRupiah(m.price)}` : ''}</span>`
+      ).join('')}</div>`
       : '';
     const notesHTML = item.notes
-      ? `<div class="history-item-notes"><i class="fas fa-sticky-note"></i> ${item.notes}</div>`
+      ? `<div class="history-item-notes"><i class="fas fa-sticky-note"></i> ${Utils.escapeHtml(item.notes)}</div>`
       : '';
     return `
     <tr>
       <td>${index + 1}</td>
-      <td>${item.name}${modHTML}${notesHTML}</td>
+      <td>${Utils.escapeHtml(item.name)}${modHTML}${notesHTML}</td>
       <td class="text-center">${item.qty}</td>
       <td class="text-right">Rp ${Utils.formatRupiah(unitPrice)}</td>
       <td class="text-right td-bold">Rp ${Utils.formatRupiah(subtotal)}</td>
@@ -263,16 +251,16 @@ function showDetailModal(trxId) {
           </div>
           <div>
             <div class="trx-info-label">Kasir</div>
-            <div class="trx-info-value">${getTransactionKasirName(trx)}</div>
+            <div class="trx-info-value">${Utils.escapeHtml(getTransactionKasirName(trx))}</div>
           </div>
           <div>
             <div class="trx-info-label">Meja</div>
-            <div class="trx-info-value">${getTransactionMejaLabel(trx)}</div>
+            <div class="trx-info-value">${Utils.escapeHtml(getTransactionMejaLabel(trx))}</div>
           </div>
         </div>
       </div>
 
-      <h4 class="section-title-sm">🛒 Daftar Pesanan</h4>
+      <h4 class="section-title-sm">Daftar Pesanan</h4>
       <table class="detail-table">
         <thead>
           <tr>
@@ -316,8 +304,8 @@ function showDetailModal(trxId) {
         </div>
         ${trx.metodeBayar === 'mixed' ? `
           <div class="payment-info-mixed">
-            <span>💵 CASH: Rp ${Utils.formatRupiah(trx.cashAmount || 0)}</span>
-            <span>📱 QRIS: Rp ${Utils.formatRupiah(trx.qrisAmount || 0)}</span>
+            <span>CASH: Rp ${Utils.formatRupiah(trx.cashAmount || 0)}</span>
+            <span>QRIS: Rp ${Utils.formatRupiah(trx.qrisAmount || 0)}</span>
           </div>
         ` : ''}
       </div>
@@ -411,6 +399,7 @@ async function deleteSelected() {
       for (const item of trx.items || []) {
         writes += (item.recipeSnapshot || []).length;
         for (const mod of item.modifiers || []) writes += (mod.resep || []).length;
+        if (item.useStock === true) writes += 1;
       }
       return total + writes;
     }, 0);
@@ -419,14 +408,16 @@ async function deleteSelected() {
       return;
     }
 
-    const transactionRefs = fromActiveShift.map(trx => dbCloud.collection('transactions').doc(trx.id));
     const stockAdds = new Map();
     const productAdds = new Map();
     for (const trx of fromActiveShift) {
       for (const item of trx.items || []) {
         const produk = state.menus.find(m => m.id === item.id);
-        if (produk?.useStock) productAdds.set(item.id, (productAdds.get(item.id) || 0) + Number(item.qty || 0));
-        const recipe = item.recipeSnapshot || produk?.resep || [];
+        const usesProductStock = Object.prototype.hasOwnProperty.call(item, 'useStock')
+          ? item.useStock === true
+          : produk?.useStock === true;
+        if (usesProductStock) productAdds.set(item.id, (productAdds.get(item.id) || 0) + Number(item.qty || 0));
+        const recipe = usesProductStock ? [] : (item.recipeSnapshot || produk?.resep || []);
         for (const bahan of recipe) {
           const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
           stockAdds.set(bahan.bahanId, (stockAdds.get(bahan.bahanId) || 0) + qty);
@@ -440,38 +431,31 @@ async function deleteSelected() {
       }
     }
 
-    await dbCloud.runTransaction(async tx => {
-      const refs = new Map();
-      for (const id of stockAdds.keys()) refs.set(`raw:${id}`, dbCloud.collection('raw_materials').doc(id));
-      for (const id of productAdds.keys()) refs.set(`menu:${id}`, dbCloud.collection('menus').doc(id));
-      for (const ref of transactionRefs) await tx.get(ref);
-      for (const ref of refs.values()) await tx.get(ref);
-      for (const [id, qty] of stockAdds) tx.update(refs.get(`raw:${id}`), { stock: firebase.firestore.FieldValue.increment(qty) });
-      for (const [id, qty] of productAdds) tx.update(refs.get(`menu:${id}`), { stock: firebase.firestore.FieldValue.increment(qty) });
-      const sessionRef = dbCloud.collection('sessions').doc(activeSessionId);
-      const sessionSnap = await tx.get(sessionRef);
-      if (!sessionSnap.exists || sessionSnap.data().status !== 'active') throw new Error('SHIFT_CLOSED');
-      const removedSales = fromActiveShift.reduce((sum, trx) => sum + Number(trx.total || 0), 0);
+    const sessionRef = dbCloud.collection('sessions').doc(activeSessionId);
+    const batch = dbCloud.batch();
+    for (const [id, qty] of stockAdds) batch.update(dbCloud.collection('raw_materials').doc(id), { stock: firebase.firestore.FieldValue.increment(qty) });
+    for (const [id, qty] of productAdds) batch.update(dbCloud.collection('menus').doc(id), { stock: firebase.firestore.FieldValue.increment(qty) });
+    const removedSales = fromActiveShift.reduce((sum, trx) => sum + Number(trx.total || 0), 0);
 
-      for (const trx of fromActiveShift) {
-        for (const item of trx.items || []) {
-          for (const bahan of item.recipeSnapshot || []) {
-            tx.set(dbCloud.collection('stock_mutations').doc(), { type: 'in', source: 'sale_reversal', bahanId: bahan.bahanId, namaBahan: bahan.nama, qty: Number(bahan.qty || 0) * Number(item.qty || 0), satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: item.name, transactionId: trx.id, userId: state.user.email, createdAt: new Date() });
-          }
-          for (const mod of item.modifiers || []) {
-            for (const bahan of mod.resep || []) {
-              tx.set(dbCloud.collection('stock_mutations').doc(), { type: 'in', source: 'sale_reversal', bahanId: bahan.bahanId, namaBahan: bahan.namaBahan, qty: Number(bahan.qty || 0) * Number(item.qty || 0), satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: item.name, modifierId: mod.optionId, namaModifier: mod.optionName, transactionId: trx.id, userId: state.user.email, createdAt: new Date() });
-            }
+    for (const trx of fromActiveShift) {
+      for (const item of trx.items || []) {
+        for (const bahan of item.recipeSnapshot || []) {
+          batch.set(dbCloud.collection('stock_mutations').doc(), { type: 'in', source: 'sale_reversal', bahanId: bahan.bahanId, namaBahan: bahan.nama || bahan.namaBahan || bahan.name || '', qty: Number(bahan.qty || 0) * Number(item.qty || 0), satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: item.name, transactionId: trx.id, sessionId: trx.sessionId || null, userId: state.user.email, createdAt: new Date() });
+        }
+        for (const mod of item.modifiers || []) {
+          for (const bahan of mod.resep || []) {
+            batch.set(dbCloud.collection('stock_mutations').doc(), { type: 'in', source: 'sale_reversal', bahanId: bahan.bahanId, namaBahan: bahan.namaBahan || bahan.nama || bahan.name || '', qty: Number(bahan.qty || 0) * Number(item.qty || 0), satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: item.name, modifierId: mod.optionId, namaModifier: mod.optionName, transactionId: trx.id, sessionId: trx.sessionId || null, userId: state.user.email, createdAt: new Date() });
           }
         }
-        tx.delete(dbCloud.collection('transactions').doc(trx.id));
       }
-      tx.update(sessionRef, {
-        totalPenjualan: firebase.firestore.FieldValue.increment(-removedSales),
-        jumlahTransaksi: firebase.firestore.FieldValue.increment(-fromActiveShift.length),
-        updatedAt: new Date()
-      });
+      batch.delete(dbCloud.collection('transactions').doc(trx.id));
+    }
+    batch.update(sessionRef, {
+      totalPenjualan: firebase.firestore.FieldValue.increment(-removedSales),
+      jumlahTransaksi: firebase.firestore.FieldValue.increment(-fromActiveShift.length),
+      updatedAt: new Date()
     });
+    await batch.commit();
 
     state.selectedHistory.clear();
     Utils.showToast(`${fromActiveShift.length} transaksi dihapus & stok dikembalikan`, 'success');
@@ -528,7 +512,7 @@ function showEditPaymentModal(trxId) {
           <i class="fas fa-random"></i> <span>CAMPUR</span>
         </button>
       </div>
-      
+
       <div id="edit-quick-cash" class="quick-buttons mt-4 mb-3 ${trx.metodeBayar === 'tunai' ? 'flex' : 'hidden'}">
          <button class="btn btn-secondary btn-sm" onclick="setEditCash(50000)">50K</button>
          <button class="btn btn-secondary btn-sm" onclick="setEditCash(100000)">100K</button>
@@ -542,13 +526,13 @@ function showEditPaymentModal(trxId) {
 
       <div id="edit-cash-input" class="form-group ${trx.metodeBayar === 'qris' ? 'is-hidden' : ''}">
         <label class="form-label">Nominal Tunai (CASH)</label>
-        <input type="number" id="edit-cash-amount" class="form-input" placeholder="0" 
+        <input type="number" id="edit-cash-amount" class="form-input" placeholder="0"
                oninput="handleEditMixedCalc(this.value, 'cash', ${trx.total})"
                value="${trx.metodeBayar === 'tunai' ? trx.paid : (trx.cashAmount || 0)}">
       </div>
       <div id="edit-qris-input" class="form-group ${trx.metodeBayar === 'mixed' ? '' : 'is-hidden'}">
         <label class="form-label">Nominal QRIS</label>
-        <input type="number" id="edit-qris-amount" class="form-input" placeholder="0" 
+        <input type="number" id="edit-qris-amount" class="form-input" placeholder="0"
                oninput="handleEditMixedCalc(this.value, 'qris', ${trx.total})"
                value="${trx.metodeBayar === 'mixed' ? (trx.qrisAmount || 0) : ''}">
       </div>
@@ -558,7 +542,7 @@ function showEditPaymentModal(trxId) {
       <div class="modal">
         <h3><i class="fas fa-edit"></i> Edit Pembayaran</h3>
         <p class="text-muted mb-2">Total Transaksi: <strong class="text-primary text-bold-md">Rp ${Utils.formatRupiah(trx.total)}</strong></p>
-        
+
         <div id="edit-payment-container" data-method="${trx.metodeBayar}">
           ${methodHtml}
         </div>
@@ -574,7 +558,7 @@ function showEditPaymentModal(trxId) {
   document.body.appendChild(modal);
 }
 
-window.selectEditMethod = function (btn, method) {
+window.selectEditMethod = function(btn, method) {
   const container = document.getElementById('edit-payment-container');
   container.dataset.method = method;
 
@@ -604,11 +588,11 @@ window.selectEditMethod = function (btn, method) {
   }
 };
 
-window.setEditCash = function (amount) {
+window.setEditCash = function(amount) {
   document.getElementById('edit-cash-amount').value = amount;
 };
 
-window.handleEditMixedCalc = function (value, source, total) {
+window.handleEditMixedCalc = function(value, source, total) {
   const container = document.getElementById('edit-payment-container');
   if (container.dataset.method !== 'mixed') return;
 
@@ -652,8 +636,7 @@ async function saveEditPayment(trxId, btnRef) {
       Utils.showToast("Salah satu melebihi/setara total! Gunakan metode CASH/QRIS tunggal.", 'warning');
       return;
     }
-    if (paid < total) { Utils.showToast("Pembayaran campuran kurang!", 'error'); return; }
-    if (paid > total && paid - total > cashAmount) { Utils.showToast("QRIS tidak sah!", 'error'); return; }
+    if (paid !== total) { Utils.showToast("Untuk pembayaran campuran, total cash + QRIS harus sama dengan total transaksi.", 'error'); return; }
   }
 
   try {

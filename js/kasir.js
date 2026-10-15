@@ -20,7 +20,7 @@ function getEligibleDiscountTemplates(subtotal = getCartSubtotal()) {
 function syncAutoDiscount() {
   if (!isDiscountFeatureEnabled()) return;
   const cfg = getDiscountConfig();
-  if (!['auto','both'].includes(cfg.mode)) return;
+  if (!['auto', 'both'].includes(cfg.mode)) return;
   if (state.discountSource !== 'auto' && cfg.mode === 'both') return;
   const subtotal = getCartSubtotal();
   const eligible = getEligibleDiscountTemplates(subtotal);
@@ -85,16 +85,17 @@ function renderKasir() {
         <div class="smart-header pos-header-sticky">
           <div id="category-scroll-container">
             ${categoryNames.map(c => `
-              <button onclick="selectCategory('${c}')"
+              <button data-category="${Utils.escapeHtml(c)}"
+                      onclick="selectCategory(this.dataset.category)"
                       class="category-btn ${state.selectedCategory === c ? 'active' : ''}">
-                ${c}
+                ${Utils.escapeHtml(c)}
               </button>
             `).join('')}
           </div>
           <div class="pos-search-wrapper">
             <i class="fas fa-search"></i>
-            <input type="text" class="pos-search-input" placeholder="Cari..." 
-                   value="${state.kasirSearchQuery || ''}" oninput="window._onKasirSearch(this.value)">
+            <input type="text" class="pos-search-input" placeholder="Cari..."
+                   value="${Utils.escapeHtml(state.kasirSearchQuery || '')}" oninput="window._onKasirSearch(this.value)">
             ${state.kasirSearchQuery ? `
               <button class="pos-search-clear" onclick="window._clearKasirSearch()">
                 <i class="fas fa-times-circle"></i>
@@ -128,6 +129,9 @@ function renderKasir() {
           </div>
           <div class="panel-footer panel-footer-rounded">
             ${renderCartFooter()}
+          </div>
+          <div class="cart-pay-bar">
+            ${renderCartActions()}
           </div>
         </div>
       </div>
@@ -165,20 +169,20 @@ function renderNoSession() {
 
 function renderMenuItem(m) {
   const stockOk = cekKetersediaanBahan(m);
-  const stokOtomatis = m.resep ? Utils.hitungStokProduk(m) : null;
+  const stokOtomatis = !m.useStock && m.resep ? Utils.hitungStokProduk(m) : null;
   const stokTersedia = stokOtomatis !== null ? stokOtomatis : (m.useStock ? m.stock : null);
   const hasModifiers = (m.modifierGroupIds || []).length > 0;
   return `
     <div class="card hover-scale ${!stockOk.ok ? 'product-disabled' : ''}" onclick="addToCart('${m.id}')">
       ${m.imageUrl
-      ? `<div class="card-img"><img src="${m.imageUrl}" alt="${m.name}" class="img-card-pos"></div>`
+      ? `<div class="card-img"><img src="${Utils.escapeHtml(m.imageUrl)}" alt="${Utils.escapeHtml(m.name)}" class="img-card-pos"></div>`
       : `<div class="img-placeholder-pos"><i class="fas fa-utensils"></i></div>`
     }
-      <div class="card-title">${m.name}</div>
+      <div class="card-title">${Utils.escapeHtml(m.name)}</div>
       <div class="card-price">Rp ${Utils.formatRupiah(m.price)}</div>
       ${hasModifiers ? `<div class="card-modifier-badge"><i class="fas fa-sliders-h"></i></div>` : ''}
       ${!stockOk.ok
-      ? `<div class="card-stock text-danger"><i class="fas fa-exclamation-circle"></i> ${stockOk.kurang}</div>`
+      ? `<div class="card-stock text-danger"><i class="fas fa-exclamation-circle"></i> ${Utils.escapeHtml(stockOk.kurang)}</div>`
       : stokTersedia !== null
         ? `<div class="card-stock"><i class="fas ${m.resep ? 'fa-cubes' : 'fa-box'}"></i> Stok: ${stokTersedia} ${m.resep ? 'porsi' : ''}</div>`
         : `<div class="card-stock text-muted"><i class="fas fa-infinity"></i></div>`
@@ -202,12 +206,12 @@ function renderCartItems() {
     return `
       <div class="cart-item">
         <div class="cart-item-main">
-          <div class="cart-item-name">${i.name}</div>
+          <div class="cart-item-name">${Utils.escapeHtml(i.name)}</div>
           ${(i.modifiers || []).length > 0 ? `
             <div class="cart-item-modifiers">
               ${i.modifiers.map(mod => `
                 <span class="cart-modifier-tag">
-                  ${mod.optionName}${mod.price > 0 ? ` +${Utils.formatRupiah(mod.price)}` : ''}
+                  ${Utils.escapeHtml(mod.optionName)}${mod.price > 0 ? ` +${Utils.formatRupiah(mod.price)}` : ''}
                 </span>
               `).join('')}
             </div>
@@ -217,7 +221,7 @@ function renderCartItems() {
               type="text"
               class="cart-notes-input"
               placeholder="Catatan... (opsional)"
-              value="${(i.notes || '').replace(/"/g, '&quot;')}"
+              value="${Utils.escapeHtml(i.notes || '')}"
               oninput="updateCartNotes('${i.cartItemId}', this.value)"
             >
           </div>
@@ -239,7 +243,6 @@ function renderCartItems() {
 function renderDiscountBox() {
   const cfg = getDiscountConfig();
   const mode = cfg.mode || 'both';
-  const templates = Array.isArray(cfg.templates) ? cfg.templates : [];
   const eligible = getEligibleDiscountTemplates();
   const source = state.discountSource || 'manual';
   const canAuto = mode === 'auto' || mode === 'both';
@@ -270,6 +273,28 @@ function renderDiscountBox() {
   </div>`;
 }
 
+function renderCartActions() {
+  const hasOpenBill = !!window._currentOpenBillId;
+  const mejaEnabled = isMejaFeatureEnabled();
+  const total = getTotal();
+  const cartEmpty = state.cart.length === 0;
+
+  return `
+    <div class="cart-footer-actions">
+      ${!cartEmpty ? `
+        <button class="btn btn-secondary btn-block" onclick="simpanKeOpenBill()">
+          <i class="fas fa-receipt"></i> ${hasOpenBill ? 'Update Open Bill' : 'Simpan Open Bill'}
+        </button>
+      ` : ''}
+      <button class="btn btn-primary btn-block btn-large"
+        onclick="showPaymentModal()"
+        ${(cartEmpty || (mejaEnabled && !state.selectedTable && !hasOpenBill)) ? 'disabled' : ''}>
+        <i class="fas fa-credit-card"></i> BAYAR (Rp ${Utils.formatRupiah(total)})
+      </button>
+    </div>
+  `;
+}
+
 function renderCartFooter() {
   const hasOpenBill = !!window._currentOpenBillId;
   const mejaEnabled = isMejaFeatureEnabled();
@@ -278,7 +303,6 @@ function renderCartFooter() {
     ? `${state.selectedTable.nomor} - ${state.selectedTable.nama}`
     : 'Pilih meja';
   const total = getTotal();
-  const cartEmpty = state.cart.length === 0;
 
   return `
     ${mejaEnabled ? `
@@ -294,18 +318,6 @@ function renderCartFooter() {
       <div class="cart-summary-row"><span>Subtotal</span><span>Rp ${Utils.formatRupiah(getCartSubtotal())}</span></div>
       ${discountEnabled ? renderDiscountBox() : ''}
       <div class="total-row"><span>Total</span><span class="total-amount">Rp ${Utils.formatRupiah(total)}</span></div>
-    </div>
-    <div class="cart-footer-actions">
-      ${!cartEmpty ? `
-        <button class="btn btn-secondary btn-block" onclick="simpanKeOpenBill()">
-          <i class="fas fa-receipt"></i> ${hasOpenBill ? 'Update Open Bill' : 'Simpan Open Bill'}
-        </button>
-      ` : ''}
-      <button class="btn btn-primary btn-block btn-large"
-        onclick="showPaymentModal()"
-        ${(cartEmpty || (mejaEnabled && !state.selectedTable && !hasOpenBill)) ? 'disabled' : ''}>
-        <i class="fas fa-credit-card"></i> BAYAR (Rp ${Utils.formatRupiah(total)})
-      </button>
     </div>
   `;
 }
@@ -356,16 +368,78 @@ function _renderKasirMenuGrid() {
   }
 }
 
-function cekKetersediaanBahan(menu, qty = 1) {
-  if (!menu.resep || menu.resep.length === 0) return { ok: true };
-  for (const bahan of menu.resep) {
-    const bahanData = state.rawMaterials.find(b => b.id === bahan.bahanId);
-    if (!bahanData) return { ok: false, kurang: `Bahan ${bahan.nama} tidak ditemukan` };
-    if (bahanData.stock < (bahan.qty * qty)) {
-      return { ok: false, kurang: `${bahan.nama} (butuh ${bahan.qty * qty} ${bahan.satuan})` };
+function _addRecipeToStockPlan(plan, recipe, multiplier, contextLabel) {
+  for (const bahan of recipe || []) {
+    if (!bahan?.bahanId) {
+      throw new Error(`${contextLabel} memiliki bahan yang tidak valid`);
+    }
+    const qtyPerUnit = Number(bahan.qty);
+    if (!Number.isFinite(qtyPerUnit) || qtyPerUnit <= 0) {
+      throw new Error(`${contextLabel} memiliki jumlah bahan yang tidak valid`);
+    }
+    const qty = qtyPerUnit * multiplier;
+    plan.set(bahan.bahanId, (plan.get(bahan.bahanId) || 0) + qty);
+  }
+}
+
+function _buildCartStockPlan(cartItems) {
+  const plan = new Map();
+  for (const item of cartItems || []) {
+    const qtyItem = Number(item.qty || 0);
+    if (!Number.isFinite(qtyItem) || qtyItem <= 0) continue;
+
+    if (!item.useStock) {
+      _addRecipeToStockPlan(plan, item.resep || [], qtyItem, `Resep ${item.name || item.id || 'produk'}`);
+    }
+
+    for (const mod of item.modifiers || []) {
+      _addRecipeToStockPlan(
+        plan,
+        mod.resep || [],
+        qtyItem,
+        `Resep ${mod.optionName || 'varian/tambahan'}`
+      );
     }
   }
-  return { ok: true };
+  return plan;
+}
+
+function _checkCartStock(cartItems) {
+  let plan;
+  try {
+    plan = _buildCartStockPlan(cartItems);
+  } catch (error) {
+    return { ok: false, kurang: error.message || 'Resep tidak valid' };
+  }
+  for (const [bahanId, required] of plan) {
+    const bahanData = state.rawMaterials.find(b => b.id === bahanId);
+    if (!bahanData) return { ok: false, kurang: `Bahan ${bahanId} tidak ditemukan`, bahanId, required };
+    const stock = Number(bahanData.stock || 0);
+    if (stock < required) {
+      return {
+        ok: false,
+        kurang: `${bahanData.name} (butuh ${Utils.formatNumber ? Utils.formatNumber(required) : required} ${bahanData.satuan || 'pcs'}, tersisa ${Utils.formatNumber ? Utils.formatNumber(stock) : stock})`,
+        bahanId,
+        required,
+        stock,
+        bahan: bahanData
+      };
+    }
+  }
+  return { ok: true, plan };
+}
+
+function cekKetersediaanBahan(menu, qty = 1) {
+  if (menu.useStock) return { ok: true };
+  return _checkCartStock([{ ...menu, qty }]);
+}
+
+function _checkCartWithCandidate(candidate) {
+  const cart = (state.cart || []).map(item =>
+    item.cartItemId === candidate.cartItemId ? candidate : item
+  );
+  if (!cart.some(item => item.cartItemId === candidate.cartItemId)) cart.push(candidate);
+  return _checkCartStock(cart);
 }
 
 function _getItemModifierTotal(item) {
@@ -441,35 +515,43 @@ function _genCartId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
+function _productStockOk(menu, extra) {
+  if (!menu?.useStock) return true;
+  const inCart = (state.cart || []).filter(c => c.id === menu.id).reduce((sum, c) => sum + Number(c.qty || 0), 0);
+  return inCart + extra <= Number(menu.stock || 0);
+}
+
 async function addToCart(id) {
   const item = state.menus.find(m => m.id === id);
   if (!item) return;
 
-  const stokOtomatis = item.resep ? Utils.hitungStokProduk(item) : null;
+  const stokOtomatis = !item.useStock && item.resep ? Utils.hitungStokProduk(item) : null;
   const stokTersedia = stokOtomatis !== null ? stokOtomatis : (item.useStock ? item.stock : Infinity);
   const stockOk = cekKetersediaanBahan(item);
   if (!stockOk.ok) { Utils.showToast(`${stockOk.kurang} tidak cukup!`, 'error'); return; }
   if (stokTersedia < 1) { Utils.showToast(`Stok ${item.name} habis!`, 'error'); return; }
+  if (!_productStockOk(item, 1)) { Utils.showToast(`Stok ${item.name} tidak cukup!`, 'error'); return; }
 
   const modGroups = (item.modifierGroupIds || [])
     .map(gid => (state.modifierGroups || []).find(g => g.id === gid))
     .filter(Boolean);
 
   if (modGroups.length > 0) {
-    await _showModifierModal(item, modGroups, stokTersedia);
+    await _showModifierModal(item, modGroups);
   } else {
     const exist = state.cart.find(c => c.id === id && (c.modifiers || []).length === 0);
-    if (exist) {
-      if (stokTersedia < (exist.qty + 1)) { Utils.showToast(`Stok ${item.name} tidak cukup!`, 'error'); return; }
-      exist.qty++;
-    } else {
-      state.cart.unshift({ ...item, cartItemId: _genCartId(), qty: 1, modifiers: [], notes: '' });
-    }
+    const candidate = exist
+      ? { ...exist, qty: exist.qty + 1 }
+      : { ...item, cartItemId: _genCartId(), qty: 1, modifiers: [], notes: '' };
+    const cartStockOk = _checkCartWithCandidate(candidate);
+    if (!cartStockOk.ok) { Utils.showToast(`${cartStockOk.kurang} tidak cukup!`, 'error'); return; }
+    if (exist) exist.qty++;
+    else state.cart.unshift(candidate);
     renderKasir();
   }
 }
 
-async function _showModifierModal(item, modGroups, stokTersedia) {
+async function _showModifierModal(item, modGroups) {
   return new Promise(resolve => {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
@@ -502,7 +584,7 @@ async function _showModifierModal(item, modGroups, stokTersedia) {
                     data-opt="${opt.id}"
                     onclick="window._toggleModifierOpt('${group.id}','${opt.id}',${group.maxSelect},${group.required})"
                   >
-                    <span>${opt.name}</span>
+                    <span>${Utils.escapeHtml(opt.name)}</span>
                     <span class="modifier-opt-price">
                       ${opt.price > 0 ? `+Rp ${Utils.formatRupiah(opt.price)}` : 'Gratis'}
                     </span>
@@ -518,7 +600,7 @@ async function _showModifierModal(item, modGroups, stokTersedia) {
     modal.innerHTML = `
       <div class="modal modal-wide">
         <div class="modal-header">
-          <h3><i class="fas fa-sliders-h"></i> Pilihan untuk ${item.name}</h3>
+          <h3><i class="fas fa-sliders-h"></i> Pilihan untuk ${Utils.escapeHtml(item.name)}</h3>
           <button class="btn-icon-sm" onclick="document.getElementById('modifier-select-modal').remove()">
             <i class="fas fa-times"></i>
           </button>
@@ -535,7 +617,7 @@ async function _showModifierModal(item, modGroups, stokTersedia) {
       </div>
     `;
 
-    window._toggleModifierOpt = function (groupId, optId, maxSelect, required) {
+    window._toggleModifierOpt = function(groupId, optId, maxSelect, required) {
       const group = modGroups.find(g => g.id === groupId);
       if (!group) return;
       const opt = group.options.find(o => o.id === optId);
@@ -560,7 +642,7 @@ async function _showModifierModal(item, modGroups, stokTersedia) {
       if (body) body.innerHTML = buildContent();
     };
 
-    window._confirmModifier = function () {
+    window._confirmModifier = function() {
       for (const group of modGroups) {
         if (group.required && (selections[group.id] || []).length === 0) {
           Utils.showToast(`"${group.name}" wajib dipilih`, 'warning');
@@ -578,11 +660,23 @@ async function _showModifierModal(item, modGroups, stokTersedia) {
           groupName: s.groupName,
           optionId: s.id,
           optionName: s.name,
-          price: s.price || 0,
+          price: Number(s.price || 0),
+          costPrice: Number(s.costPrice || 0),
           resep: s.resep || []
         })),
         notes: ''
       };
+
+      if (!_productStockOk(item, 1)) {
+        Utils.showToast(`Stok ${item.name} tidak cukup!`, 'error');
+        return;
+      }
+
+      const cartStockOk = _checkCartWithCandidate(cartItem);
+      if (!cartStockOk.ok) {
+        Utils.showToast(`${cartStockOk.kurang} tidak cukup!`, 'error');
+        return;
+      }
 
       state.cart.unshift(cartItem);
       document.getElementById('modifier-select-modal')?.remove();
@@ -603,12 +697,12 @@ function changeQty(cartItemId, d) {
   if (!item) return;
   const menu = state.menus.find(m => m.id === item.id);
   if (!menu) return;
-  const stokOtomatis = menu.resep ? Utils.hitungStokProduk(menu) : null;
-  const stokTersedia = stokOtomatis !== null ? stokOtomatis : (menu.useStock ? menu.stock : Infinity);
   if (d > 0) {
-    const stockOk = cekKetersediaanBahan(menu, item.qty + d);
+    const candidate = { ...item, qty: item.qty + d };
+    const candidateCart = (state.cart || []).map(c => c.cartItemId === item.cartItemId ? candidate : c);
+    const stockOk = _checkCartStock(candidateCart);
     if (!stockOk.ok) { Utils.showToast(`${stockOk.kurang} tidak cukup!`, 'error'); return; }
-    if (stokTersedia < (item.qty + d)) { Utils.showToast(`Stok ${menu.name} tidak cukup!`, 'error'); return; }
+    if (menu.useStock && !_productStockOk(menu, d)) { Utils.showToast(`Stok ${menu.name} tidak cukup!`, 'error'); return; }
   }
   item.qty += d;
   if (item.qty <= 0) state.cart = state.cart.filter(i => i.cartItemId !== cartItemId);
@@ -618,15 +712,6 @@ function changeQty(cartItemId, d) {
 function updateCartNotes(cartItemId, value) {
   const item = state.cart.find(i => i.cartItemId === cartItemId);
   if (item) item.notes = value;
-}
-
-
-function setPaymentMethod(method) {
-  state.selectedPaymentMethod = method;
-  if (method === 'tunai') { state.cashAmount = 0; state.qrisAmount = 0; }
-  else if (method === 'qris') { state.cashAmount = 0; state.qrisAmount = getTotal(); }
-  else { state.cashAmount = 0; state.qrisAmount = 0; }
-  renderKasir();
 }
 
 async function pilihMeja() {
@@ -642,9 +727,9 @@ async function pilihMeja() {
       <h3><i class="fas fa-chair"></i> Pilih Meja</h3>
       <div class="table-grid">
         ${tables.length ? tables.map(meja => `
-          <button class="table-btn" data-id="${meja.id}" data-nomor="${meja.nomor}" data-nama="${meja.nama}">
-            <div class="table-number">${meja.nomor}</div>
-            <div class="table-name text-bold-md mt-1 color-primary">${meja.nama}</div>
+          <button class="table-btn" data-id="${meja.id}" data-nomor="${Utils.escapeHtml(meja.nomor)}" data-nama="${Utils.escapeHtml(meja.nama)}">
+            <div class="table-number">${Utils.escapeHtml(meja.nomor)}</div>
+            <div class="table-name text-bold-md mt-1 color-primary">${Utils.escapeHtml(meja.nama)}</div>
           </button>
         `).join('') : '<div class="empty-state"><i class="fas fa-chair"></i><p>Belum ada meja aktif</p></div>'}
       </div>
@@ -694,7 +779,7 @@ async function simpanKeOpenBill() {
 
   const mejaAktif = isMejaFeatureEnabled();
   const mejaOptions = mejaAktif
-    ? `<select id="open-bill-table-input" class="swal2-select" required><option value="">Pilih meja</option>${state.tables.filter(t => t.aktif !== false).sort((a, b) => String(a.nomor).localeCompare(String(b.nomor), undefined, { numeric: true })).map(t => `<option value="${t.id}" ${state.selectedTable?.id === t.id ? 'selected' : ''}>${t.nomor} - ${t.nama}</option>`).join('')}</select>`
+    ? `<select id="open-bill-table-input" class="swal2-select" required><option value="">Pilih meja</option>${state.tables.filter(t => t.aktif !== false).sort((a, b) => String(a.nomor).localeCompare(String(b.nomor), undefined, { numeric: true })).map(t => `<option value="${t.id}" ${state.selectedTable?.id === t.id ? 'selected' : ''}>${Utils.escapeHtml(t.nomor)} - ${Utils.escapeHtml(t.nama)}</option>`).join('')}</select>`
     : '';
   const currentBill = window._currentOpenBillId ? (state.openBills || []).find(ob => ob.id === window._currentOpenBillId) : null;
 
@@ -739,7 +824,18 @@ async function simpanKeOpenBill() {
     mejaNomor: meja?.nomor || null,
     sessionId: state.currentSession.id,
     kasir: state.user.email,
-    items: state.cart,
+    items: state.cart.map(i => ({
+      ...i,
+      price: Number(i.price || i.salePrice || 0),
+      salePrice: Number(i.salePrice || i.price || 0),
+      modifierTotal: _getItemModifierTotal(i),
+      modifiers: (i.modifiers || []).map(mod => ({
+        ...mod,
+        price: Number(mod.price || 0),
+        costPrice: Number(mod.costPrice || 0),
+        resep: (mod.resep || []).map(b => ({ ...b }))
+      }))
+    })),
     subtotal: getCartSubtotal(),
     discountType: state.discountMode,
     discountValue: Number(state.discountValue) || 0,
@@ -775,11 +871,13 @@ async function simpanKeOpenBill() {
   }
 }
 
+let _bayarInFlight = false;
+
 async function bayar() {
+  if (_bayarInFlight) return;
   if (!state.currentSession) { bukaShift(); return; }
   if (isMejaFeatureEnabled() && !state.selectedTable && !window._directOpenBillPayment && !window._currentOpenBillId) { Utils.showToast("Pilih meja!", 'warning'); return; }
   if (state.cart.length === 0) { Utils.showToast("Keranjang kosong!", 'error'); return; }
-
   const total = getTotal();
   let cashAmount = 0, qrisAmount = 0, paid = 0;
 
@@ -793,11 +891,11 @@ async function bayar() {
     cashAmount = state.cashAmount || 0;
     qrisAmount = state.qrisAmount || 0;
     paid = cashAmount + qrisAmount;
-    if (qrisAmount > total || cashAmount > total) {
-      if (qrisAmount > total) { Utils.showToast("Nominal QRIS tidak boleh melebihi total transaksi!", 'error'); return; }
-    }
+    if (qrisAmount > total) { Utils.showToast("Nominal QRIS tidak boleh melebihi total transaksi!", 'error'); return; }
     if (paid !== total) { Utils.showToast("Untuk pembayaran campuran, total cash + QRIS harus sama dengan total transaksi.", 'error'); return; }
   }
+
+  _bayarInFlight = true;
 
   try {
     const stockPlan = new Map();
@@ -807,13 +905,14 @@ async function bayar() {
     for (const item of state.cart) {
       const produk = state.menus.find(m => m.id === item.id);
       if (!produk) throw new Error(`Produk "${item.name || item.id}" tidak ditemukan`);
+      const recipeSnapshot = (!produk.useStock ? (produk.resep || []) : []).map(b => ({ ...b }));
       if (produk.useStock) {
         productPlan.set(item.id, (productPlan.get(item.id) || 0) + Number(item.qty || 0));
       }
-      const recipeSnapshot = (produk.resep || []).map(b => ({ ...b }));
       for (const bahan of recipeSnapshot) {
+        if (!bahan?.bahanId) throw new Error(`Resep ${produk.name} memiliki bahan yang tidak valid`);
         const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
-        stockPlan.set(bahan.bahanId, (stockPlan.get(bahan.bahanId) || 0) + qty);
+        if (qty > 0) stockPlan.set(bahan.bahanId, (stockPlan.get(bahan.bahanId) || 0) + qty);
       }
       const modifierSnapshots = (item.modifiers || []).map(mod => ({
         ...mod,
@@ -821,8 +920,9 @@ async function bayar() {
       }));
       for (const mod of modifierSnapshots) {
         for (const bahan of mod.resep) {
+          if (!bahan?.bahanId) throw new Error(`Resep modifier ${mod.optionName || ''} memiliki bahan yang tidak valid`);
           const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
-          stockPlan.set(bahan.bahanId, (stockPlan.get(bahan.bahanId) || 0) + qty);
+          if (qty > 0) stockPlan.set(bahan.bahanId, (stockPlan.get(bahan.bahanId) || 0) + qty);
         }
       }
       snapshotItems.push({ item, produk, recipeSnapshot, modifierSnapshots });
@@ -838,7 +938,10 @@ async function bayar() {
           name: i.name,
           price: i.price,
           salePrice: i.price,
-          costPrice: Number(i.costPrice || 0),
+          costPrice: Number(i.costPrice || 0) + (i.modifiers || []).reduce((sum, mod) => sum + Number(mod.costPrice || 0), 0),
+          costPriceIncludesModifiers: true,
+          useStock: !!i.useStock,
+          menuRecipeApplied: !i.useStock && Array.isArray(i.resep) && i.resep.length > 0,
           qty: i.qty,
           modifiers: i.modifiers || [],
           recipeSnapshot: ((snapshotItems.find(x => x.item === i)?.recipeSnapshot) || []).map(b => ({ ...b })),
@@ -873,70 +976,76 @@ async function bayar() {
     const sessionRef = dbCloud.collection("sessions").doc(state.currentSession.id);
     const openBillRef = window._currentOpenBillId ? dbCloud.collection('openBills').doc(window._currentOpenBillId) : null;
 
-    await dbCloud.runTransaction(async tx => {
-      const stockRefs = new Map();
-      for (const id of stockPlan.keys()) stockRefs.set(`raw:${id}`, dbCloud.collection('raw_materials').doc(id));
-      for (const id of productPlan.keys()) stockRefs.set(`menu:${id}`, dbCloud.collection('menus').doc(id));
-      const stockSnaps = new Map();
-      for (const [key, ref] of stockRefs) stockSnaps.set(key, await tx.get(ref));
-      const sessionSnap = await tx.get(sessionRef);
-      if (!sessionSnap.exists || sessionSnap.data().status !== 'active') throw new Error('SHIFT_CLOSED');
+    if (openBillRef && !state.openBills.some(b => b.id === window._currentOpenBillId)) throw new AppError('Open bill ini sudah dibayar atau dibatalkan');
+    for (const [id, qty] of stockPlan) {
+      const bahan = state.rawMaterials.find(b => b.id === id);
+      if (!bahan) throw new AppError(`Bahan ${id} tidak ditemukan`);
+      if (Number(bahan.stock || 0) < qty) throw new AppError(`Stok ${bahan.name || id} tidak cukup`);
+    }
+    for (const [id, qty] of productPlan) {
+      const menu = state.menus.find(m => m.id === id);
+      if (!menu) throw new AppError(`Produk ${id} tidak ditemukan`);
+      if (Number(menu.stock || 0) < qty) throw new AppError(`Stok ${menu.name || id} tidak cukup`);
+    }
 
-      for (const [id, qty] of stockPlan) {
-        const snap = stockSnaps.get(`raw:${id}`);
-        if (!snap.exists) throw new Error(`Bahan ${id} tidak ditemukan`);
-        const stock = Number(snap.data().stock || 0);
-        if (stock < qty) throw new Error(`Stok ${snap.data().name || id} tidak cukup`);
+    const batch = dbCloud.batch();
+    batch.set(trxRef, trxData);
+    for (const [id, qty] of stockPlan) {
+      batch.update(dbCloud.collection('raw_materials').doc(id), { stock: firebase.firestore.FieldValue.increment(-qty) });
+    }
+    for (const [id, qty] of productPlan) {
+      batch.update(dbCloud.collection('menus').doc(id), { stock: firebase.firestore.FieldValue.increment(-qty) });
+    }
+    const now = new Date();
+    for (const { item, produk, recipeSnapshot, modifierSnapshots } of snapshotItems) {
+      for (const bahan of recipeSnapshot) {
+        const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
+        batch.set(dbCloud.collection('stock_mutations').doc(), {
+          type: 'out', source: 'sale', bahanId: bahan.bahanId, namaBahan: bahan.nama || bahan.namaBahan || bahan.name || '', qty,
+          satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: produk.name,
+          transactionId: trxRef.id, sessionId: state.currentSession.id, userId: state.user.email, createdAt: now
+        });
       }
-      for (const [id, qty] of productPlan) {
-        const snap = stockSnaps.get(`menu:${id}`);
-        if (!snap.exists) throw new Error(`Produk ${id} tidak ditemukan`);
-        const stock = Number(snap.data().stock || 0);
-        if (stock < qty) throw new Error(`Stok ${snap.data().name || id} tidak cukup`);
-      }
-
-      tx.create(trxRef, trxData);
-      for (const [id, qty] of stockPlan) {
-        tx.update(stockRefs.get(`raw:${id}`), { stock: firebase.firestore.FieldValue.increment(-qty) });
-      }
-      for (const [id, qty] of productPlan) {
-        tx.update(stockRefs.get(`menu:${id}`), { stock: firebase.firestore.FieldValue.increment(-qty) });
-      }
-      const now = new Date();
-      for (const { item, produk, recipeSnapshot, modifierSnapshots } of snapshotItems) {
-        for (const bahan of recipeSnapshot) {
+      for (const mod of modifierSnapshots) {
+        for (const bahan of mod.resep) {
           const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
-          tx.set(dbCloud.collection('stock_mutations').doc(), {
-            type: 'out', source: 'sale', bahanId: bahan.bahanId, namaBahan: bahan.nama, qty,
+          batch.set(dbCloud.collection('stock_mutations').doc(), {
+            type: 'out', source: 'sale', bahanId: bahan.bahanId, namaBahan: bahan.namaBahan || bahan.nama || bahan.name || '', qty,
             satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: produk.name,
-            transactionId: trxRef.id, userId: state.user.email, createdAt: now
+            modifierId: mod.optionId, namaModifier: mod.optionName, transactionId: trxRef.id, sessionId: state.currentSession.id,
+            userId: state.user.email, createdAt: now
           });
         }
-        for (const mod of modifierSnapshots) {
-          for (const bahan of mod.resep) {
-            const qty = Number(bahan.qty || 0) * Number(item.qty || 0);
-            tx.set(dbCloud.collection('stock_mutations').doc(), {
-              type: 'out', source: 'sale', bahanId: bahan.bahanId, namaBahan: bahan.namaBahan, qty,
-              satuan: bahan.satuan || 'pcs', produkId: item.id, namaProduk: produk.name,
-              modifierId: mod.optionId, namaModifier: mod.optionName, transactionId: trxRef.id,
-              userId: state.user.email, createdAt: now
-            });
-          }
-        }
       }
-      tx.update(sessionRef, {
-        totalPenjualan: firebase.firestore.FieldValue.increment(total),
-        jumlahTransaksi: firebase.firestore.FieldValue.increment(1),
-        updatedAt: now
-      });
-      if (openBillRef) tx.update(openBillRef, { status: 'paid', paidAt: now, transactionId: trxRef.id });
+      if (item.useStock) {
+        batch.set(dbCloud.collection('stock_mutations').doc(), {
+          type: 'out', source: 'sale', targetType: 'menu', menuId: item.id, qty: Number(item.qty || 0),
+          produkId: item.id, namaProduk: produk.name, transactionId: trxRef.id,
+          sessionId: state.currentSession.id, userId: state.user.email, createdAt: now
+        });
+      }
+    }
+    batch.update(sessionRef, {
+      totalPenjualan: firebase.firestore.FieldValue.increment(total),
+      jumlahTransaksi: firebase.firestore.FieldValue.increment(1),
+      updatedAt: now
     });
+    if (openBillRef) batch.update(openBillRef, { status: 'paid', paidAt: now, transactionId: trxRef.id });
+    await batch.commit();
 
     const trxId = trxRef.id;
 
-
     trxData.id = trxId;
-    if (typeof window.printStruk === 'function') await window.printStruk(trxData);
+    let printOk = true;
+    try {
+      if (typeof window.printStruk === 'function') {
+        const printResult = await window.printStruk(trxData);
+        printOk = printResult !== false;
+      }
+    } catch (printError) {
+      printOk = false;
+      console.error('[IniKasir] Transaksi tersimpan, tetapi cetak struk gagal:', printError);
+    }
 
     state.cart = [];
     state.selectedTable = null;
@@ -950,10 +1059,14 @@ async function bayar() {
     window._discountDraftValue = 0;
     window._currentOpenBillId = null;
 
-    Utils.showToast("Transaksi berhasil!");
+    Utils.showToast(printOk ? "Transaksi berhasil!" : "Transaksi berhasil disimpan. Struk belum tercetak.", printOk ? 'success' : 'warning');
     renderKasir();
   } catch (err) {
+    console.error('[IniKasir] Pembayaran gagal:', err);
+    if (/^Stok .+ tidak cukup$/i.test(String(err?.message || ''))) renderKasir();
     Utils.showToast(Utils.getFriendlyError(err, 'Transaksi gagal diproses. Silakan coba lagi.'), 'error');
+  } finally {
+    _bayarInFlight = false;
   }
 }
 
@@ -1029,7 +1142,7 @@ async function showPaymentModal() {
 
   document.body.appendChild(modal);
 
-  window.selectPaymentMethod = function (method) {
+  window.selectPaymentMethod = function(method) {
     state.selectedPaymentMethod = method;
     if (method === 'tunai') { state.cashAmount = 0; state.qrisAmount = 0; }
     else if (method === 'qris') { state.cashAmount = 0; state.qrisAmount = total; }
@@ -1042,7 +1155,7 @@ async function showPaymentModal() {
   };
 
   document.getElementById('cancelPaymentBtn').addEventListener('click', () => { modal.remove(); _restoreDirectOpenBillPayment(); });
-  document.getElementById('processPaymentBtn').addEventListener('click', async function () {
+  document.getElementById('processPaymentBtn').addEventListener('click', async function() {
     const btn = this;
     Utils.setButtonLoading(btn, true);
     try {
@@ -1054,7 +1167,12 @@ async function showPaymentModal() {
       Utils.showToast(Utils.getFriendlyError(error, 'Pembayaran gagal diproses. Silakan coba lagi.'), 'error');
     }
   });
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.addEventListener('click', e => {
+    if (e.target === modal) {
+      modal.remove();
+      _restoreDirectOpenBillPayment();
+    }
+  });
 }
 
 function renderModalPaymentContent() {
@@ -1123,7 +1241,7 @@ function renderModalPaymentContent() {
   `;
 }
 
-window.handleCashInput = function (value) {
+window.handleCashInput = function(value) {
   const cash = parseInt(value.replace(/\./g, '')) || 0;
   const total = getTotal();
   state.cashAmount = cash;
@@ -1134,7 +1252,7 @@ window.handleCashInput = function (value) {
   }
 };
 
-window.handleMixedCashInput = function (value) {
+window.handleMixedCashInput = function(value) {
   const cash = parseInt(value.replace(/\./g, '')) || 0;
   const total = getTotal();
   state.cashAmount = cash;
@@ -1145,7 +1263,7 @@ window.handleMixedCashInput = function (value) {
   updateMixedSummary();
 };
 
-window.handleMixedQrisInput = function (value) {
+window.handleMixedQrisInput = function(value) {
   const qris = parseInt(value.replace(/\./g, '')) || 0;
   const total = getTotal();
   state.qrisAmount = qris;
@@ -1174,7 +1292,7 @@ function updateMixedSummary() {
   }
 }
 
-window.quickCash = function (amount) {
+window.quickCash = function(amount) {
   if (state.selectedPaymentMethod === 'mixed') {
     const total = getTotal();
     state.cashAmount = Math.min(amount, total);
@@ -1192,7 +1310,7 @@ window.quickCash = function (amount) {
   }
 };
 
-window.quickQris = function (amount) {
+window.quickQris = function(amount) {
   const total = getTotal();
   state.qrisAmount = Math.min(Math.max(amount, 0), total);
   state.cashAmount = total - state.qrisAmount;
@@ -1209,27 +1327,24 @@ window.addToCart = addToCart;
 window.changeQty = changeQty;
 window.updateCartNotes = updateCartNotes;
 window.getTotal = getTotal;
-window.setPaymentMethod = setPaymentMethod;
 window.pilihMeja = pilihMeja;
 window.simpanKeOpenBill = simpanKeOpenBill;
 window.bayar = bayar;
 window.showPaymentModal = showPaymentModal;
 window.showOpenBillPaymentModal = showOpenBillPaymentModal;
 
-window._onKasirSearch = function (val) {
+window._onKasirSearch = function(val) {
   state.kasirSearchQuery = val;
   _renderKasirMenuGrid();
-
 };
 
-window._clearKasirSearch = function () {
+window._clearKasirSearch = function() {
   state.kasirSearchQuery = '';
   renderKasir();
 };
 window.renderModalPaymentContent = renderModalPaymentContent;
 window._loadOpenBill = _loadOpenBill;
 
-window.setMobileTab = function (tab) {
+window.setMobileTab = function(tab) {
   state.activeMobileTab = tab;
 };
-

@@ -1,7 +1,5 @@
 let currentSettingsTab = '';
-let currentOperationalSection = 'home';
 let lastSettingsScroll = 0;
-let lastSettingsTabScroll = 0;
 let operationalSearch = { meja: '', kasir: '', diskon: '' };
 let operationalStatus = { meja: 'semua', kasir: 'semua', diskon: 'semua' };
 
@@ -19,7 +17,7 @@ function renderSettings() {
     ['kasir', 'fa-users', 'Kasir', 'Kelola kasir dan akses'],
     ['meja', 'fa-chair', 'Meja', 'Kelola meja'],
     ['diskon', 'fa-percent', 'Diskon', 'Kelola diskon dan template'],
-    ['backup', 'fa-database', 'Backup', 'Import, export & reset data']
+    ['backup', 'fa-database', 'Data Aplikasi', 'Import, template & reset data']
   ];
 
   const content = `
@@ -108,7 +106,7 @@ function renderSettingsTab() {
 
           <div class="form-group">
             <label class="form-label">Footer Struk</label>
-            <textarea id="strukFooter" class="form-input" rows="4">${footerText}</textarea>
+            <textarea id="strukFooter" class="form-input" rows="4">${Utils.escapeHtml(footerText)}</textarea>
           </div>
 
           <div class="checkbox-group settings-receipt-options">
@@ -159,7 +157,7 @@ function renderSettingsTab() {
         <div class="operational-list-toolbar">
           <div class="operational-search">
             <i class="fas fa-search"></i>
-            <input class="form-input" value="${operationalSearch.kasir}" placeholder="Cari nama kasir..." oninput="setOperationalSearch('kasir', this.value)">
+            <input class="form-input" value="${_settingsAttr(operationalSearch.kasir)}" placeholder="Cari nama kasir..." oninput="setOperationalSearch('kasir', this.value)">
           </div>
           <select class="form-input operational-filter" aria-label="Filter status kasir" onchange="setOperationalStatus('kasir', this.value)">
             <option value="semua" ${status === 'semua' ? 'selected' : ''}>Semua</option>
@@ -173,13 +171,13 @@ function renderSettingsTab() {
           ${kasirFiltered.length ? kasirFiltered.map(k => `
             <div class="settings-record-row settings-kasir-record" data-settings-search="${_settingsAttr(k.nama)}" data-settings-active="${k.aktif !== false ? 'true' : 'false'}">
               <div class="settings-record-main">
-                <strong>${k.nama}</strong>
+                <strong>${Utils.escapeHtml(k.nama)}</strong>
               </div>
               <span class="badge ${k.aktif !== false ? 'badge-success' : 'badge-danger'} settings-record-status">${k.aktif !== false ? 'Aktif' : 'Nonaktif'}</span>
               <div class="settings-record-actions">
-                <button class="btn btn-sm ${k.aktif !== false ? 'btn-warning' : 'btn-primary'}" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);toggleKasirStatus(${k._origIndex}).finally(()=>Utils.setButtonLoading(b,false))">${k.aktif !== false ? 'Nonaktifkan' : 'Aktifkan'}</button>
-                <button class="btn btn-sm btn-icon-sm btn-icon-warning" onclick="_saveSettingsScroll();editKasir(${k._origIndex})" title="Edit"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-danger btn-icon-sm" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);hapusKasir(${k._origIndex}).finally(()=>Utils.setButtonLoading(b,false))" title="Hapus"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm status-toggle-btn ${k.aktif !== false ? 'btn-danger' : 'btn-primary'}" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);toggleKasirStatus(${k._origIndex}).finally(()=>Utils.setButtonLoading(b,false))">${k.aktif !== false ? 'Nonaktifkan' : 'Aktifkan'}</button>
+                <button class="btn btn-sm btn-icon-sm btn-icon-neutral" onclick="_saveSettingsScroll();editKasir(${k._origIndex})" title="Edit"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-icon-sm btn-icon-danger" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);hapusKasir(${k._origIndex}).finally(()=>Utils.setButtonLoading(b,false))" title="Hapus"><i class="fas fa-trash"></i></button>
               </div>
             </div>
           `).join('') : ''}
@@ -230,7 +228,7 @@ function renderSettingsTab() {
         <div class="operational-list-toolbar">
           <div class="operational-search">
             <i class="fas fa-search"></i>
-            <input class="form-input" value="${operationalSearch.meja}" placeholder="Cari nomor atau nama meja..." oninput="setOperationalSearch('meja', this.value)">
+            <input class="form-input" value="${_settingsAttr(operationalSearch.meja)}" placeholder="Cari nomor atau nama meja..." oninput="setOperationalSearch('meja', this.value)">
           </div>
           <select class="form-input operational-filter" aria-label="Filter status meja" onchange="setOperationalStatus('meja', this.value)">
             <option value="semua" ${status === 'semua' ? 'selected' : ''}>Semua</option>
@@ -242,16 +240,16 @@ function renderSettingsTab() {
 
         <div class="operational-scroll-list settings-record-list">
           ${mejaFiltered.length ? mejaFiltered.map(m => `
-            <div class="settings-record-row settings-meja-record" data-settings-search="${_settingsAttr(`${m.nomor} ${m.nama || ''}`)}" data-settings-active="${m.aktif !== false ? 'true' : 'false'}">
+            <div class="settings-record-row settings-meja-record" data-settings-search="${_settingsAttr(`${Utils.escapeHtml(m.nomor)} ${m.nama || ''}`)}" data-settings-active="${m.aktif !== false ? 'true' : 'false'}">
               <div class="settings-record-main">
-                <strong>${m.nomor}</strong>
-                <small>${m.nama || 'Tanpa nama'}</small>
+                <strong>${Utils.escapeHtml(m.nomor)}</strong>
+                <small>${Utils.escapeHtml(m.nama || 'Tanpa nama')}</small>
               </div>
               <span class="badge ${m.aktif !== false ? 'badge-success' : 'badge-danger'} settings-record-status">${m.aktif !== false ? 'Aktif' : 'Nonaktif'}</span>
               <div class="settings-record-actions">
-                <button class="btn btn-sm ${m.aktif !== false ? 'btn-warning' : 'btn-primary'}" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);toggleMejaStatus('${m.id}').finally(()=>Utils.setButtonLoading(b,false))">${m.aktif !== false ? 'Nonaktifkan' : 'Aktifkan'}</button>
-                <button class="btn btn-sm btn-icon-sm btn-icon-warning" onclick="_saveSettingsScroll();editMeja('${m.id}')" title="Edit"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-danger btn-icon-sm" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);hapusMeja('${m.id}').finally(()=>Utils.setButtonLoading(b,false))" title="Hapus"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm status-toggle-btn ${m.aktif !== false ? 'btn-danger' : 'btn-primary'}" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);toggleMejaStatus('${m.id}').finally(()=>Utils.setButtonLoading(b,false))">${m.aktif !== false ? 'Nonaktifkan' : 'Aktifkan'}</button>
+                <button class="btn btn-sm btn-icon-sm btn-icon-neutral" onclick="_saveSettingsScroll();editMeja('${m.id}')" title="Edit"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-icon-sm btn-icon-danger" onclick="_saveSettingsScroll();const b=this;Utils.setButtonLoading(b,true);hapusMeja('${m.id}').finally(()=>Utils.setButtonLoading(b,false))" title="Hapus"><i class="fas fa-trash"></i></button>
               </div>
             </div>
           `).join('') : ''}
@@ -318,7 +316,7 @@ function renderSettingsTab() {
         <div class="operational-list-toolbar">
           <div class="operational-search">
             <i class="fas fa-search"></i>
-            <input class="form-input" value="${operationalSearch.diskon}" placeholder="Cari template..." oninput="setOperationalSearch('diskon', this.value)">
+            <input class="form-input" value="${_settingsAttr(operationalSearch.diskon)}" placeholder="Cari template..." oninput="setOperationalSearch('diskon', this.value)">
           </div>
           <select class="form-input operational-filter" aria-label="Filter status diskon" onchange="setOperationalStatus('diskon', this.value)">
             <option value="semua" ${status === 'semua' ? 'selected' : ''}>Semua</option>
@@ -330,22 +328,22 @@ function renderSettingsTab() {
 
         <div class="discount-template-list operational-scroll-list">
           ${templateFiltered.length ? templateFiltered.map(t => {
-            const idx = templates.indexOf(t);
-            return `
+      const idx = templates.indexOf(t);
+      return `
               <div class="settings-record-row settings-diskon-record" data-settings-search="${_settingsAttr(t.nama || 'Diskon')}" data-settings-active="${t.aktif === false ? 'false' : 'true'}">
                 <div class="settings-record-main">
-                  <strong>${t.nama || 'Diskon'}</strong>
+                  <strong>${Utils.escapeHtml(t.nama || 'Diskon')}</strong>
                   <small>Min. Rp ${Utils.formatRupiah(Number(t.minBelanja || 0))} · ${t.tipe === 'nominal' ? 'Rp ' + Utils.formatRupiah(Number(t.nilai || 0)) : Number(t.nilai || 0) + '%'}</small>
                 </div>
                 <span class="badge ${t.aktif === false ? 'badge-danger' : 'badge-success'} settings-record-status">${t.aktif === false ? 'Nonaktif' : 'Aktif'}</span>
                 <div class="settings-record-actions discount-template-actions">
-                  <button class="btn btn-sm ${t.aktif === false ? 'btn-primary' : 'btn-warning'}" onclick="toggleTemplateDiskon(${idx})">${t.aktif === false ? 'Aktifkan' : 'Nonaktifkan'}</button>
-                  <button class="btn btn-sm btn-icon-sm btn-icon-warning" onclick="editTemplateDiskon(${idx})" title="Edit"><i class="fas fa-edit"></i></button>
-                  <button class="btn btn-sm btn-danger btn-icon-sm" onclick="hapusTemplateDiskon(${idx})" title="Hapus"><i class="fas fa-trash"></i></button>
+                  <button class="btn btn-sm status-toggle-btn ${t.aktif === false ? 'btn-primary' : 'btn-danger'}" onclick="toggleTemplateDiskon(${idx})">${t.aktif === false ? 'Aktifkan' : 'Nonaktifkan'}</button>
+                  <button class="btn btn-sm btn-icon-sm btn-icon-neutral" onclick="editTemplateDiskon(${idx})" title="Edit"><i class="fas fa-edit"></i></button>
+                  <button class="btn btn-sm btn-icon-sm btn-icon-danger" onclick="hapusTemplateDiskon(${idx})" title="Hapus"><i class="fas fa-trash"></i></button>
                 </div>
               </div>
             `;
-          }).join('') : ''}
+    }).join('') : ''}
           <div class="settings-operational-empty text-muted text-center p-3" ${templateFiltered.length ? 'hidden' : ''}>Belum ada diskon yang sesuai.</div>
         </div>
       </div>
@@ -355,7 +353,7 @@ function renderSettingsTab() {
   if (currentSettingsTab === 'backup') {
     return `
       <div class="settings-card">
-        <div class="settings-section-head settings-backup-head"><h3><i class="fas fa-database"></i> Backup & Restore</h3></div>
+        <div class="settings-section-head settings-backup-head"><h3><i class="fas fa-database"></i> Data Aplikasi</h3></div>
         <div class="backup-grid settings-backup-grid">
           <div class="backup-card settings-backup-card">
             <div class="backup-icon"><i class="fas fa-file-import"></i></div>
@@ -424,7 +422,6 @@ function switchSettingsTab(tab) {
   });
 }
 
-
 function setOperationalSearch(section, value) {
   operationalSearch[section] = value;
   const content = document.getElementById(`settings-content-${section}`);
@@ -460,23 +457,9 @@ function setOperationalStatus(section, value) {
   renderSettings();
 }
 
-function switchOperationalSection(section) {
-  _saveSettingsScroll();
-  currentOperationalSection = ['home', 'meja', 'kasir', 'diskon'].includes(section) ? section : 'home';
-  renderSettings();
-  requestAnimationFrame(() => {
-    const main = document.querySelector('main');
-    if (main) main.scrollTop = lastSettingsScroll;
-  });
-}
-
 function _saveSettingsScroll() {
   const _m = document.querySelector('main');
   if (_m) lastSettingsScroll = _m.scrollTop;
-}
-
-async function saveTokoSettings() {
-  return saveStrukSettings();
 }
 
 async function saveStrukSettings() {
@@ -570,7 +553,7 @@ async function saveFiturSettings() {
     const currentTemplates = Array.isArray(state.settings?.fitur?.diskonPengaturan?.templates)
       ? state.settings.fitur.diskonPengaturan.templates : [];
     const diskonPengaturan = {
-      mode: ['manual','auto','both'].includes(diskonMode) ? diskonMode : 'both',
+      mode: ['manual', 'auto', 'both'].includes(diskonMode) ? diskonMode : 'both',
       templates: currentTemplates
     };
     const fitur = { ...(state.settings.fitur || {}), meja, diskon, diskonPengaturan };
@@ -646,14 +629,16 @@ async function editTemplateDiskon(index) {
       </div>`,
     buttons: [
       { text: 'Batal', action: 'cancel', class: 'btn-secondary' },
-      { text: 'Simpan', action: 'save', class: 'btn-primary', onClick: () => {
-        window._editDiscountTemplate = {
-          nama: (document.getElementById('editDiscountTemplateName')?.value || '').trim(),
-          minBelanja: Math.max(0, Number(document.getElementById('editDiscountTemplateMin')?.value || 0)),
-          tipe: document.getElementById('editDiscountTemplateType')?.value === 'nominal' ? 'nominal' : 'percent',
-          nilai: Math.max(0, Number(document.getElementById('editDiscountTemplateValue')?.value || 0))
-        };
-      }}
+      {
+        text: 'Simpan', action: 'save', class: 'btn-primary', onClick: () => {
+          window._editDiscountTemplate = {
+            nama: (document.getElementById('editDiscountTemplateName')?.value || '').trim(),
+            minBelanja: Math.max(0, Number(document.getElementById('editDiscountTemplateMin')?.value || 0)),
+            tipe: document.getElementById('editDiscountTemplateType')?.value === 'nominal' ? 'nominal' : 'percent',
+            nilai: Math.max(0, Number(document.getElementById('editDiscountTemplateValue')?.value || 0))
+          };
+        }      
+}
     ]
   });
   if (result !== 'save') return;
@@ -680,248 +665,6 @@ async function hapusTemplateDiskon(index) {
   if (!await Utils.showConfirm('Hapus template diskon ini?')) return;
   templates.splice(index, 1);
   try { await _saveDiscountTemplates(templates); Utils.showToast('Template diskon dihapus'); } catch (e) { Utils.showToast(Utils.getFriendlyError(e, 'Gagal menghapus template diskon. Silakan coba lagi.'), 'error'); }
-}
-
-async function saveMejaSettings() {
-  _saveSettingsScroll();
-  try {
-    await dbCloud.collection("settings").doc("toko").update({
-      meja: {
-        aktif: document.getElementById('mejaAktif').checked
-      }
-    });
-    state.settings.meja = {
-      ...state.settings.meja,
-      aktif: document.getElementById('mejaAktif').checked
-    };
-    Utils.showToast("Pengaturan disimpan");
-  } catch (error) {
-    Utils.showToast(Utils.getFriendlyError(error), 'error');
-  }
-}
-
-async function exportToPDFShift() {
-  if (!state.currentSession) {
-    Utils.showToast("Tidak ada shift aktif!", 'warning');
-    return;
-  }
-
-  const transactions = state.transactions.filter(t => t.sessionId === state.currentSession.id);
-  const totalTransaksi = transactions.length;
-  const totalPenjualan = transactions.reduce((s, t) => s + t.total, 0);
-  const totalDiskon = transactions.reduce((s, t) => s + (t.discountAmount || 0), 0);
-  const totalHPP = transactions.reduce((s, t) => s + (t.items || []).reduce((x, i) => x + (Number(i.costPrice || 0) * (i.qty || 0)), 0), 0);
-  const labaKotor = totalPenjualan - totalHPP;
-  const totalCash = transactions.reduce((s, t) => {
-    const qris = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
-    return s + (t.metodeBayar === 'tunai' ? (t.total || 0) : Math.max(0, (t.total || 0) - qris));
-  }, 0);
-  const totalQRIS = transactions.reduce((s, t) => {
-    const qrisAmt = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
-    return s + qrisAmt;
-  }, 0);
-  const totalPengeluaran = state.pengeluaran?.filter(p => p.sessionId === state.currentSession.id)?.reduce((s, p) => s + (p.nominal || 0), 0) || 0;
-  const cashBersih = totalCash - totalPengeluaran;
-  const pengeluaranList = state.pengeluaran?.filter(p => p.sessionId === state.currentSession.id) || [];
-
-  const produkCount = {};
-  transactions.forEach(t => {
-    t.items.forEach(i => {
-      if (!produkCount[i.name]) produkCount[i.name] = { qty: 0, total: 0, hpp: 0, laba: 0 };
-      const sales = (i.price + (i.modifierTotal || 0)) * i.qty;
-      const hpp = Number(i.costPrice || 0) * i.qty;
-      produkCount[i.name].qty += i.qty;
-      produkCount[i.name].total += sales;
-      produkCount[i.name].hpp += hpp;
-      produkCount[i.name].laba += sales - hpp;
-    });
-  });
-  const topProducts = Object.entries(produkCount).sort((a, b) => b[1].qty - a[1].qty);
-
-  const waktuBuka = state.currentSession.waktuBuka?.seconds ? new Date(state.currentSession.waktuBuka.seconds * 1000) : new Date(state.currentSession.waktuBuka);
-
-  await generatePDF({
-    title: `LAPORAN SHIFT ${state.currentSession.shift}`,
-    subtitle: `Kasir: ${state.currentSession.kasir} | Dicetak: ${new Date().toLocaleString('id-ID')}`,
-    totalTransaksi,
-    totalPenjualan,
-    totalDiskon,
-    totalHPP,
-    labaKotor,
-    totalCash,
-    totalQRIS,
-    totalPengeluaran,
-    cashBersih,
-    pengeluaranList,
-    topProducts,
-    filename: `laporan_shift_${state.currentSession.shift}_${new Date().toISOString().slice(0, 10)}.pdf`
-  });
-}
-
-
-
-async function generatePDF(data) {
-  try {
-    const { jsPDF } = window.jspdf;
-
-    const rowH = 7;
-    const headH = 8;
-    const sectionH = 12;
-    const headerH = 30;
-
-    let estH = headerH;
-    estH += sectionH + 5 * rowH;
-    estH += sectionH + (data.topProducts.length > 0 ? headH + data.topProducts.length * rowH : rowH);
-    if (data.pengeluaranList.length > 0) estH += sectionH + headH + data.pengeluaranList.length * rowH;
-    if (data.lowStock && data.lowStock.length > 0) estH += sectionH + headH + data.lowStock.length * rowH;
-    estH += 20;
-
-    const PAGE_H = 297;
-    const scale = estH <= PAGE_H ? 1 : Math.max(0.45, PAGE_H / estH);
-    const fontSize = s => Math.max(6, Math.round(s * scale));
-    const pad = s => Math.max(1, s * scale);
-    const sp = s => s * scale;
-
-    const doc = new jsPDF({ format: [210, PAGE_H] });
-    const PW = 210;
-    const ML = sp(14);
-    const MR = sp(14);
-    let y = sp(12);
-
-    doc.setFontSize(fontSize(18));
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(30, 58, 138);
-    doc.text(data.title, PW / 2, y, { align: 'center' });
-    y += sp(7);
-
-    doc.setFontSize(fontSize(8));
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(120, 120, 120);
-    doc.text(data.subtitle, PW / 2, y, { align: 'center' });
-    y += sp(5);
-
-    doc.setDrawColor(30, 58, 138);
-    doc.setLineWidth(0.4);
-    doc.line(ML, y, PW - MR, y);
-    y += sp(8);
-
-    const section = (label) => {
-      doc.setFontSize(fontSize(11));
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 58, 138);
-      doc.text(label, ML, y);
-      y += sp(6);
-    };
-
-    const tableOpts = (extra) => ({
-      styles: { fontSize: fontSize(8.5), cellPadding: pad(2.5) },
-      margin: { left: ML, right: MR },
-      tableWidth: PW - ML - MR,
-      ...extra
-    });
-
-    section('RINGKASAN');
-    const ringkasanBody = [
-      ['Total Transaksi', `${data.totalTransaksi} transaksi`],
-      ['Total Cash', `Rp ${Utils.formatRupiah(data.totalCash)}`],
-      ['Total Qris', `Rp ${Utils.formatRupiah(data.totalQRIS)}`],
-      ['Subtotal Penjualan', `Rp ${Utils.formatRupiah(data.totalPenjualan + data.totalDiskon)}`],
-      ['Total Diskon', `-Rp ${Utils.formatRupiah(data.totalDiskon)}`],
-      ['Total Penjualan', `Rp ${Utils.formatRupiah(data.totalPenjualan)}`],
-      ['HPP', `Rp ${Utils.formatRupiah(data.totalHPP)}`],
-      ['Laba Kotor', `Rp ${Utils.formatRupiah(data.labaKotor)}`],
-    ];
-    if (data.totalPengeluaran > 0) {
-      ringkasanBody.push(['Total Pengeluaran', `-Rp ${Utils.formatRupiah(data.totalPengeluaran)}`]);
-      ringkasanBody.push(['Cash Bersih', `Rp ${Utils.formatRupiah(data.cashBersih)}`]);
-    }
-
-    doc.autoTable(tableOpts({
-      startY: y,
-      body: ringkasanBody,
-      columnStyles: {
-        0: { fontStyle: 'bold', cellWidth: (PW - ML - MR) * 0.45 },
-        1: { halign: 'right' }
-      },
-      alternateRowStyles: { fillColor: [245, 247, 255] },
-      didParseCell(hookData) {
-        if (data.totalPengeluaran > 0) {
-          if (hookData.row.index === ringkasanBody.length - 2) hookData.cell.styles.textColor = [220, 38, 38];
-          if (hookData.row.index === ringkasanBody.length - 1) {
-            hookData.cell.styles.textColor = [5, 150, 105];
-            hookData.cell.styles.fontStyle = 'bold';
-          }
-        }
-      },
-    }));
-    y = doc.lastAutoTable.finalY + sp(10);
-
-    section('PRODUK TERJUAL');
-    if (data.topProducts.length > 0) {
-      const cw = PW - ML - MR;
-      doc.autoTable(tableOpts({
-        startY: y,
-        head: [['Nama Produk', 'Terjual', 'Omzet', 'HPP', 'Laba Kotor']],
-        body: data.topProducts.map(([name, data]) => [name, `${data.qty} pcs`, `Rp ${Utils.formatRupiah(data.total)}`, `Rp ${Utils.formatRupiah(data.hpp)}`, `Rp ${Utils.formatRupiah(data.laba)}`]),
-        headStyles: { fillColor: [30, 58, 138], fontStyle: 'bold', fontSize: fontSize(8.5) },
-        columnStyles: {
-          0: { cellWidth: cw * 0.40 },
-          1: { halign: 'center', cellWidth: cw * 0.13 },
-          2: { halign: 'right', cellWidth: cw * 0.17 },
-          3: { halign: 'right', cellWidth: cw * 0.15 },
-          4: { halign: 'right', cellWidth: cw * 0.15 }
-        },
-        theme: 'striped',
-      }));
-      y = doc.lastAutoTable.finalY + sp(10);
-    } else {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(fontSize(9));
-      doc.setTextColor(120, 120, 120);
-      doc.text('Belum ada data penjualan', ML + sp(4), y);
-      y += sp(10);
-    }
-
-    if (data.pengeluaranList.length > 0) {
-      section('PENGELUARAN');
-      const cw = PW - ML - MR;
-      doc.autoTable(tableOpts({
-        startY: y,
-        head: [['Nama Pengeluaran', 'Nominal']],
-        body: data.pengeluaranList.map(p => [p.nama, `Rp ${Utils.formatRupiah(p.nominal)}`]),
-        headStyles: { fillColor: [220, 38, 38], fontStyle: 'bold', fontSize: fontSize(8.5) },
-        columnStyles: {
-          0: { cellWidth: cw * 0.72 },
-          1: { halign: 'right', cellWidth: cw * 0.28 }
-        },
-        theme: 'striped',
-      }));
-      y = doc.lastAutoTable.finalY + sp(10);
-    }
-
-    if (data.lowStock && data.lowStock.length > 0) {
-      section('BAHAN STOK MENIPIS');
-      const cw = PW - ML - MR;
-      doc.autoTable(tableOpts({
-        startY: y,
-        head: [['Nama Bahan', 'Stok', 'Min. Stok', 'Satuan']],
-        body: data.lowStock.map(b => [b.name, b.stock, b.minStock || 5, b.satuan || 'pcs']),
-        headStyles: { fillColor: [217, 119, 6], fontStyle: 'bold', fontSize: fontSize(8.5) },
-        columnStyles: {
-          0: { cellWidth: cw * 0.46 },
-          1: { halign: 'center', cellWidth: cw * 0.18 },
-          2: { halign: 'center', cellWidth: cw * 0.18 },
-          3: { halign: 'center', cellWidth: cw * 0.18 }
-        },
-        theme: 'striped',
-      }));
-    }
-
-    doc.save(data.filename);
-    Utils.showToast('PDF berhasil diekspor');
-  } catch (error) {
-    Utils.showToast(Utils.getFriendlyError(error), 'error');
-  }
 }
 
 function updateImportExcelFileName(input) {
@@ -959,7 +702,7 @@ async function importFromExcel() {
       return;
     }
 
-    const confirm = await Utils.showConfirm('Import akan mengganti data menu & bahan. Kategori yang dipakai akan dibuat jika belum ada. Lanjutkan?');
+    const confirm = await Utils.showConfirm('Import akan mengganti data menu & bahan. Resep menu dan resep varian/tambahan akan dikosongkan. Kategori yang dipakai akan dibuat jika belum ada. Lanjutkan?');
     if (!confirm) return;
 
     const toBool = value => {
@@ -967,13 +710,20 @@ async function importFromExcel() {
       return ['true', '1', 'ya', 'yes', 'on'].includes(normalized);
     };
     const numberValue = (value, fallback = 0) => {
-      const n = Number(String(value ?? '').replace(/[^0-9,.-]/g, '').replace(/\.(?=.*\.)/g, '').replace(',', '.'));
+      let text = String(value ?? '').replace(/[^0-9,.-]/g, '');
+      if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(text)) text = text.replace(/\./g, '');
+      const n = Number(text.replace(/\.(?=.*\.)/g, '').replace(',', '.'));
       return Number.isFinite(n) ? n : fallback;
     };
 
     const existingCategories = await dbCloud.collection('categories').get();
     const categoryMap = new Map();
-    existingCategories.forEach(doc => categoryMap.set(String(doc.data().name || '').trim().toLowerCase(), doc.id));
+    let fallbackCategoryId = null;
+    const createdCategoryRefs = [];
+    existingCategories.forEach(doc => {
+      categoryMap.set(String(doc.data().name || '').trim().toLowerCase(), doc.id);
+      if (doc.data().system) fallbackCategoryId = doc.id;
+    });
 
     for (const row of kategoriRows) {
       const name = String(row['Nama Kategori'] || row['Kategori'] || '').trim();
@@ -981,6 +731,7 @@ async function importFromExcel() {
       const key = name.toLowerCase();
       if (!categoryMap.has(key)) {
         const ref = await dbCloud.collection('categories').add({ name, system: false, createdAt: new Date() });
+        createdCategoryRefs.push(ref);
         categoryMap.set(key, ref.id);
       }
     }
@@ -990,29 +741,42 @@ async function importFromExcel() {
       const key = name.toLowerCase();
       if (!categoryMap.has(key)) {
         const ref = await dbCloud.collection('categories').add({ name, system: false, createdAt: new Date() });
+        createdCategoryRefs.push(ref);
         categoryMap.set(key, ref.id);
       }
     }
 
-    const deleteCollection = async name => {
-      const snap = await dbCloud.collection(name).get();
-      for (let i = 0; i < snap.docs.length; i += 400) {
+    const deleteDocs = async docs => {
+      for (let i = 0; i < docs.length; i += 400) {
         const batch = dbCloud.batch();
-        snap.docs.slice(i, i + 400).forEach(doc => batch.delete(doc.ref));
+        docs.slice(i, i + 400).forEach(doc => batch.delete(doc.ref || doc));
+        await batch.commit();
+      }
+    };
+    const restoreDocs = async docs => {
+      for (let i = 0; i < docs.length; i += 400) {
+        const batch = dbCloud.batch();
+        docs.slice(i, i + 400).forEach(doc => batch.set(doc.ref, doc.data()));
         await batch.commit();
       }
     };
     const addInBatches = async (name, rows) => {
+      const refs = [];
       for (let i = 0; i < rows.length; i += 400) {
         const batch = dbCloud.batch();
-        rows.slice(i, i + 400).forEach(row => batch.set(dbCloud.collection(name).doc(), row));
+        for (const row of rows.slice(i, i + 400)) {
+          const ref = dbCloud.collection(name).doc();
+          refs.push(ref);
+          batch.set(ref, row);
+        }
         await batch.commit();
       }
+      return refs;
     };
 
     const menuDocs = menus.map(m => {
       const categoryName = String(m['Kategori'] || '').trim();
-      const categoryId = categoryMap.get(categoryName.toLowerCase()) || null;
+      const categoryId = categoryMap.get(categoryName.toLowerCase()) || fallbackCategoryId;
       const price = numberValue(m['Harga Jual'] ?? m['Harga']);
       return {
         name: String(m['Nama Menu']).trim(),
@@ -1035,10 +799,39 @@ async function importFromExcel() {
       createdAt: new Date()
     }));
 
-    if (menus.length) await deleteCollection('menus');
-    if (bahans.length) await deleteCollection('raw_materials');
-    if (menuDocs.length) await addInBatches('menus', menuDocs);
-    if (bahanDocs.length) await addInBatches('raw_materials', bahanDocs);
+    const oldMenus = menus.length ? (await dbCloud.collection('menus').get()).docs : [];
+    const oldBahans = bahans.length ? (await dbCloud.collection('raw_materials').get()).docs : [];
+    const createdMenuRefs = [];
+    const createdBahanRefs = [];
+    try {
+      if (menuDocs.length) createdMenuRefs.push(...await addInBatches('menus', menuDocs));
+      if (bahanDocs.length) createdBahanRefs.push(...await addInBatches('raw_materials', bahanDocs));
+      if (menus.length) await deleteDocs(oldMenus);
+      if (bahans.length) await deleteDocs(oldBahans);
+    } catch (error) {
+      await deleteDocs(createdMenuRefs);
+      await deleteDocs(createdBahanRefs);
+      await restoreDocs([...oldMenus, ...oldBahans]);
+      for (let i = 0; i < createdCategoryRefs.length; i += 400) {
+        const batch = dbCloud.batch();
+        createdCategoryRefs.slice(i, i + 400).forEach(ref => batch.delete(ref));
+        await batch.commit();
+      }
+      throw error;
+    }
+
+    if (bahans.length) {
+      try {
+        const groupSnap = await dbCloud.collection('modifierGroups').get();
+        if (!groupSnap.empty) {
+          const clearBatch = dbCloud.batch();
+          groupSnap.forEach(g => clearBatch.update(g.ref, { options: (g.data().options || []).map(opt => ({ ...opt, resep: [] })) }));
+          await clearBatch.commit();
+        }
+      } catch (error) {
+        Utils.showToast('Import selesai, tetapi resep varian/tambahan belum dibersihkan. Periksa menu Opsi Menu.', 'warning');
+      }
+    }
 
     Utils.showToast(`Import berhasil: ${menuDocs.length} menu, ${bahanDocs.length} bahan`);
     setTimeout(() => location.reload(), 1200);
@@ -1090,7 +883,7 @@ async function resetRiwayatOnly() {
           <li>Produk & kategori menu</li>
           <li>Bahan baku & stok</li>
           <li>List meja</li>
-          <li>Modifier group</li>
+          <li>Varian/tambahan</li>
           <li>Pengaturan & struk</li>
         </ul>
         <p class="alert-warning-text bold mt-sm">
@@ -1113,7 +906,7 @@ async function resetRiwayatOnly() {
     return;
   }
 
-  Utils.showToast("⏳ Menghapus riwayat...", 'warning');
+  Utils.showToast("Menghapus riwayat...", 'warning');
 
   const _batchDelete = async (collName) => {
     const snap = await dbCloud.collection(collName).get();
@@ -1131,6 +924,7 @@ async function resetRiwayatOnly() {
     await _batchDelete('stock_mutations');
     await _batchDelete('pengeluaran');
     await _batchDelete('openBills');
+    await _batchDelete('session_locks');
 
     state.transactions = [];
     state.allTransactions = [];
@@ -1167,7 +961,7 @@ async function resetData() {
           <li>Transaksi & sesi</li>
           <li>Produk & kategori menu</li>
           <li>Bahan baku & stok</li>
-          <li>Modifier group</li>
+          <li>Varian/tambahan</li>
           <li>List meja</li>
           <li>Pengeluaran & open bill</li>
           <li>Riwayat mutasi stok</li>
@@ -1190,7 +984,7 @@ async function resetData() {
     return;
   }
 
-  Utils.showToast("⏳ Menghapus SEMUA data...", 'warning');
+  Utils.showToast("Menghapus SEMUA data...", 'warning');
 
   const _batchDelete = async (collName) => {
     const snap = await dbCloud.collection(collName).get();
@@ -1214,6 +1008,7 @@ async function resetData() {
     await _batchDelete('pengeluaran');
     await _batchDelete('openBills');
     await _batchDelete('modifierGroups');
+    await _batchDelete('session_locks');
 
     state.transactions = [];
     state.allTransactions = [];
@@ -1241,18 +1036,6 @@ async function resetData() {
   }
 }
 
-function sortMeja(field) {
-  _saveSettingsScroll();
-  SortableTable.toggle('meja', field);
-  renderSettings();
-}
-
-function sortKasir(field) {
-  _saveSettingsScroll();
-  SortableTable.toggle('kasir', field);
-  renderSettings();
-}
-
 async function editKasir(index) {
   const kasirs = state.settings?.kasirs || [];
   const kData = kasirs[index];
@@ -1274,9 +1057,11 @@ async function editKasir(index) {
       </div>`,
     buttons: [
       { text: 'Batal', action: 'cancel', class: 'btn-secondary' },
-      { text: 'Simpan', action: 'save', class: 'btn-primary', onClick: () => {
-        window._editKasirNama = document.getElementById('editKasirNama')?.value || '';
-      }}
+      {
+        text: 'Simpan', action: 'save', class: 'btn-primary', onClick: () => {
+          window._editKasirNama = document.getElementById('editKasirNama')?.value || '';
+        }      
+}
     ]
   });
 
@@ -1293,8 +1078,9 @@ async function editKasir(index) {
   const newArr = [...kasirs];
   newArr[index] = { ...newArr[index], nama: newName };
   _saveSettingsScroll();
-  await saveKasirSettings(newArr);
-  Utils.showToast("Nama kasir diperbarui");
+  if (await saveKasirSettings(newArr)) {
+    Utils.showToast("Nama kasir diperbarui");
+  }
 }
 
 async function editMeja(id) {
@@ -1307,11 +1093,11 @@ async function editMeja(id) {
     content: `
           <div class="form-group">
             <label class="form-label">Nomor Meja</label>
-            <input type="text" id="editMejaNomor" class="form-input" value="${meja.nomor}">
+            <input type="text" id="editMejaNomor" class="form-input" value="${Utils.escapeHtml(meja.nomor)}">
           </div>
           <div class="form-group">
             <label class="form-label">Nama/Keterangan</label>
-            <input type="text" id="editMejaNama" class="form-input" value="${meja.nama}">
+            <input type="text" id="editMejaNama" class="form-input" value="${Utils.escapeHtml(meja.nama)}">
           </div>
         `,
     buttons: [
@@ -1353,8 +1139,10 @@ async function saveKasirSettings(kasirs) {
     await dbCloud.collection("settings").doc("toko").update({ kasirs });
     state.settings.kasirs = kasirs;
     renderSettings();
+    return true;
   } catch (e) {
     Utils.showToast(Utils.getFriendlyError(e, 'Gagal menyimpan kasir. Silakan coba lagi.'), 'error');
+    return false;
   }
 }
 
@@ -1367,8 +1155,9 @@ async function tambahKasir() {
     return;
   }
   const kasirs = [...currentKasirs, { nama, aktif: true }];
-  await saveKasirSettings(kasirs);
-  Utils.showToast("Kasir ditambah");
+  if (await saveKasirSettings(kasirs)) {
+    Utils.showToast("Kasir ditambah");
+  }
 }
 
 async function toggleKasirStatus(index) {
@@ -1391,25 +1180,20 @@ async function hapusKasir(index) {
 
 window.renderSettings = renderSettings;
 window.switchSettingsTab = switchSettingsTab;
-window.saveTokoSettings = saveTokoSettings;
 window.saveStrukSettings = saveStrukSettings;
 window.saveFiturSettings = saveFiturSettings;
 window.tambahTemplateDiskon = tambahTemplateDiskon;
 window.toggleTemplateDiskon = toggleTemplateDiskon;
 window.editTemplateDiskon = editTemplateDiskon;
 window.hapusTemplateDiskon = hapusTemplateDiskon;
-window.saveMejaSettings = saveMejaSettings;
 window.tambahMeja = tambahMeja;
 window.toggleMejaStatus = toggleMejaStatus;
 window.hapusMeja = hapusMeja;
-window.sortMeja = sortMeja;
 window.editMeja = editMeja;
 window.tambahKasir = tambahKasir;
 window.toggleKasirStatus = toggleKasirStatus;
 window.hapusKasir = hapusKasir;
-window.sortKasir = sortKasir;
 window.editKasir = editKasir;
-window.exportToPDFShift = exportToPDFShift;
 window.updateImportExcelFileName = updateImportExcelFileName;
 window.importFromExcel = importFromExcel;
 window.downloadTemplateExcel = downloadTemplateExcel;

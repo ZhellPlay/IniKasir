@@ -68,7 +68,7 @@ function renderListPengeluaran(list) {
   return list.map(p => `
       <div class="recap-item recap-pengeluaran-item" data-id="${p.id}">
         <div class="recap-pengeluaran-item-left">
-          <div class="recap-name recap-pengeluaran-name">${p.nama}</div>
+          <div class="recap-name recap-pengeluaran-name">${Utils.escapeHtml(p.nama)}</div>
           <div class="recap-pengeluaran-meta">
             Rp ${Utils.formatRupiah(p.nominal)}
           </div>
@@ -164,7 +164,7 @@ function mulaiEditPengeluaran(id, namaLama, nominalLama) {
 
   item.innerHTML = `
       <div class="pengeluaran-edit-row">
-        <input type="text" id="editNama_${id}" class="form-input pengeluaran-edit-input-nama" value="${namaLama}">
+        <input type="text" id="editNama_${id}" class="form-input pengeluaran-edit-input-nama" value="${Utils.escapeHtml(namaLama)}">
         <input type="number" id="editNominal_${id}" class="form-input pengeluaran-edit-input-nominal" value="${nominalLama}"
                onkeydown="if(event.key==='Enter'){const b=this.nextElementSibling;Utils.setButtonLoading(b,true);simpanEditPengeluaran('${id}').finally(()=>Utils.setButtonLoading(b,false))}">
         <button class="btn btn-primary pengeluaran-edit-btn-save"

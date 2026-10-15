@@ -91,7 +91,7 @@ window.Layout = {
 
           ${this.navItem('Menu', 'utensils', 'menuManager')}
 
-          ${this.navItem('Modifier', 'sliders-h', 'modifierManager')}
+          ${this.navItem('Opsi Menu', 'sliders-h', 'modifierManager')}
 
           ${this.navItem('Pengaturan', 'cog', 'settings')}
         </nav>
@@ -122,7 +122,7 @@ window.Layout = {
       'Laporan': 'laporan',
       'Bahan': 'bahanManager',
       'Menu': 'menuManager',
-      'Modifier': 'modifierManager',
+      'Opsi Menu': 'modifierManager',
       'Pengaturan': 'settings'
     };
     const targetView = viewMap[label] || view;
@@ -171,7 +171,7 @@ window.Layout = {
       pengeluaranCount > 0 ? `<span class="bottom-nav-badge">${pengeluaranCount}</span>` : ''
     )}
         ${tab('Riwayat', 'history', "window.navigateTo('history')", cv === 'history')}
-        ${tab('Lainnya', 'ellipsis', "window.toggleSidebar()", !window.sidebarCollapsed,
+        ${tab('Lainnya', 'ellipsis', "window.toggleRadialMenu()", false,
       lowStockCount > 0 ? `<span class="bottom-nav-badge">${lowStockCount}</span>` : ''
     )}
       </nav>
@@ -199,7 +199,7 @@ window.Layout = {
                 </span>`}
               <div class="header-shift-badge">
                 <span class="header-shift-dot"></span>
-                <span>Shift ${window.state.currentSession.shift}</span>
+                <span><span class="shift-word">Shift </span>${window.state.currentSession.shift}</span>
               </div>
               <button onclick="window.toggleDarkMode()" class="header-theme-btn" title="${isDark ? 'Mode Terang' : 'Mode Gelap'}">
                 <i class="fas fa-${isDark ? 'sun' : 'moon'}"></i>
@@ -227,19 +227,92 @@ window.Layout = {
     const titles = {
       kasir: 'Kasir',
       openBill: 'Open Bill',
-      history: 'Riwayat Transaksi',
+      history: 'Riwayat',
       laporan: 'Laporan',
-      bahanManager: 'Manajemen Bahan',
-      menuManager: 'Manajemen Menu',
+      bahanManager: 'Daftar Bahan',
+      menuManager: 'Daftar Kategori',
       openCategory: 'Daftar Menu',
-      modifierManager: 'Modifier & Add-on',
+      modifierManager: 'Varian/Tambahan',
       settings: 'Pengaturan'
     };
     return titles[window.state.currentView] || window.APP_NAME;
   }
 };
 
-window.showOpenBillList = function () {
+window.toggleRadialMenu = function() {
+  if (!window.matchMedia('(orientation: portrait)').matches) {
+    window.toggleSidebar();
+    return;
+  }
+  const existing = document.getElementById('radial-menu-overlay');
+  if (existing) {
+    existing.remove();
+    document.documentElement.classList.remove('radial-menu-open');
+    return;
+  }
+  const items = [
+    ['laporan', 'chart-bar', 'Laporan'],
+    ['bahanManager', 'boxes', 'Bahan'],
+    ['menuManager', 'utensils', 'Menu'],
+    ['modifierManager', 'sliders-h', 'Opsi Menu'],
+    ['settings', 'cog', 'Pengaturan'],
+    ['printer', 'print', 'Printer']
+  ];
+  const overlay = document.createElement('div');
+  overlay.id = 'radial-menu-overlay';
+  overlay.className = 'radial-menu-overlay';
+  overlay.innerHTML = `
+    <div class="radial-menu-backdrop" aria-hidden="true"></div>
+    <div class="radial-menu-stage" role="menu" aria-label="Lainnya">
+      ${items.map(([action, icon, label], index) => `
+        <button type="button" class="radial-menu-item radial-menu-item-${index + 1}" onclick="window.selectRadialMenu('${action}')" role="menuitem">
+          <span class="radial-menu-icon"><i class="fas fa-${icon}"></i></span>
+          <span class="radial-menu-label">${label}</span>
+        </button>
+      `).join('')}
+      <button type="button" class="radial-menu-logout" onclick="window.selectRadialMenu('logout')" role="menuitem" aria-label="Logout">
+        <span class="radial-menu-icon"><i class="fas fa-sign-out-alt"></i></span>
+        <span class="radial-menu-label">Logout</span>
+      </button>
+    </div>
+  `;
+  overlay.addEventListener('click', event => {
+    if (event.target === overlay || event.target.classList.contains('radial-menu-backdrop')) window.closeRadialMenu();
+  });
+  document.body.appendChild(overlay);
+  document.documentElement.classList.add('radial-menu-open');
+};
+
+window.closeRadialMenu = function() {
+  document.getElementById('radial-menu-overlay')?.remove();
+  document.documentElement.classList.remove('radial-menu-open');
+};
+
+window.selectRadialMenu = function(action) {
+  window.closeRadialMenu();
+  if (action === 'printer') {
+    window.connectPrinter?.();
+    return;
+  }
+  if (action === 'logout') {
+    window.logout?.();
+    return;
+  }
+  if (action === 'menuManager') {
+    window.navigateTo('menuManager');
+    return;
+  }
+  window.navigateTo(action);
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  const mq = window.matchMedia('(orientation: portrait)');
+  const handleOrientationChange = () => window.closeRadialMenu?.();
+  mq.addEventListener?.('change', handleOrientationChange);
+  window.addEventListener('resize', handleOrientationChange);
+});
+
+window.showOpenBillList = function() {
   const openBills = state.openBills || [];
 
   const modal = document.createElement('div');
@@ -255,9 +328,9 @@ window.showOpenBillList = function () {
       return `
           <div class="open-bill-list-item" onclick="window._loadOpenBillFromList('${ob.id}')">
             <div class="open-bill-list-left">
-              <div class="open-bill-list-customer"><i class="fas fa-user"></i> ${ob.namaPelanggan || 'Tanpa nama'}</div>
+              <div class="open-bill-list-customer"><i class="fas fa-user"></i> ${Utils.escapeHtml(ob.namaPelanggan || 'Tanpa nama')}</div>
               <div class="open-bill-list-meja">
-                <i class="fas fa-chair"></i> ${ob.mejaNomor ? `Meja ${ob.mejaNomor} - ${ob.mejaNama || ''}` : 'Take Away'}
+                <i class="fas fa-chair"></i> ${ob.mejaNomor ? `Meja ${Utils.escapeHtml(ob.mejaNomor)} - ${Utils.escapeHtml(ob.mejaNama || '')}` : 'Take Away'}
               </div>
               <div class="open-bill-list-meta">
                 ${ob.items?.length || 0} item · ${waktu}
@@ -302,7 +375,7 @@ window.showOpenBillList = function () {
   document.body.appendChild(modal);
 };
 
-window._loadOpenBillFromList = function (obId) {
+window._loadOpenBillFromList = function(obId) {
   const ob = (state.openBills || []).find(o => o.id === obId);
   if (!ob) return;
   document.getElementById('modal-open-bill-list')?.remove();
@@ -311,14 +384,14 @@ window._loadOpenBillFromList = function (obId) {
   window.renderKasir?.();
 };
 
-window._goPayOpenBill = function (obId) {
+window._goPayOpenBill = function(obId) {
   const ob = (state.openBills || []).find(o => o.id === obId);
   if (!ob) return;
   document.getElementById('modal-open-bill-list')?.remove();
   window.showOpenBillPaymentModal?.(ob);
 };
 
-window._printOpenBill = async function (btn, obId) {
+window._printOpenBill = async function(btn, obId) {
   const ob = (state.openBills || []).find(o => o.id === obId);
   if (!ob) return;
   const dummyTrx = {
@@ -339,7 +412,7 @@ window._printOpenBill = async function (btn, obId) {
   }
 };
 
-window._viewOpenBillDetail = function (obId) {
+window._viewOpenBillDetail = function(obId) {
   const ob = (state.openBills || []).find(o => o.id === obId);
   if (!ob) return;
 
@@ -348,19 +421,27 @@ window._viewOpenBillDetail = function (obId) {
   modal.id = 'modal-ob-detail';
   modal.style.zIndex = '10000';
 
-  const itemsHtml = ob.items.map(item => {
+  let detailSubtotal = 0;
+  const itemsHtml = (ob.items || []).map(item => {
     let modsHtml = '';
-    if (item.modifiers && item.modifiers.length > 0) {
-      const ms = item.modifiers.map(m => `<span class="cart-modifier-tag">${m.optionName}</span>`).join('');
+    const modifiers = Array.isArray(item.modifiers) ? item.modifiers : [];
+    if (modifiers.length > 0) {
+      const ms = modifiers.map(m => {
+        const price = Number(m.price || 0);
+        return `<span class="cart-modifier-tag">${Utils.escapeHtml(m.optionName)}${price > 0 ? ` +Rp ${Utils.formatRupiah(price)}` : ''}</span>`;
+      }).join('');
       modsHtml = `<div class="cart-item-modifiers">${ms}</div>`;
     }
-    const notesHtml = item.notes ? `<div class="history-item-notes"><i class="fas fa-comment-dots"></i> ${item.notes}</div>` : '';
-    const unitPrice = item.price + (item.modifierTotal || 0);
+    const notesHtml = item.notes ? `<div class="history-item-notes"><i class="fas fa-comment-dots"></i> ${Utils.escapeHtml(item.notes)}</div>` : '';
+    const modifierTotal = modifiers.reduce((sum, m) => sum + Number(m.price || 0), 0);
+    const unitPrice = Number(item.price ?? item.salePrice ?? 0) + modifierTotal;
+    const lineTotal = unitPrice * Number(item.qty || 0);
+    detailSubtotal += lineTotal;
 
     return `
       <div class="riwayat-stok-row mb-sm">
         <div class="riwayat-stok-left">
-          <div class="riwayat-stok-label">${item.name}</div>
+          <div class="riwayat-stok-label">${Utils.escapeHtml(item.name)}</div>
           <div class="riwayat-stok-meta">@ ${Utils.formatRupiah(unitPrice)}</div>
           ${modsHtml}
           ${notesHtml}
@@ -384,8 +465,18 @@ window._viewOpenBillDetail = function (obId) {
       <div class="modal-body">
         ${itemsHtml}
         <div class="open-bill-total-row">
+          <div class="open-bill-total-label">Subtotal</div>
+          <div class="open-bill-total-amount">Rp ${Utils.formatRupiah(detailSubtotal)}</div>
+        </div>
+        ${Number(ob.discountAmount || 0) > 0 ? `
+          <div class="open-bill-total-row open-bill-discount-row">
+            <div class="open-bill-total-label">Diskon</div>
+            <div class="open-bill-total-amount">-Rp ${Utils.formatRupiah(Number(ob.discountAmount || 0))}</div>
+          </div>
+        ` : ''}
+        <div class="open-bill-total-row">
           <div class="open-bill-total-label">Total Tagihan</div>
-          <div class="open-bill-total-amount">Rp ${Utils.formatRupiah(ob.total)}</div>
+          <div class="open-bill-total-amount">Rp ${Utils.formatRupiah(Math.max(0, detailSubtotal - Number(ob.discountAmount || 0)))}</div>
         </div>
       </div>
       <div class="modal-footer-inline">
@@ -397,7 +488,7 @@ window._viewOpenBillDetail = function (obId) {
   document.body.appendChild(modal);
 };
 
-window._cancelOpenBill = async function (obId) {
+window._cancelOpenBill = async function(obId) {
   const result = await Swal.fire({
     title: 'Batalkan Open Bill?',
     text: 'Pesanan yang belum dibayar akan dihapus.',
@@ -409,12 +500,16 @@ window._cancelOpenBill = async function (obId) {
     customClass: { popup: 'swal2-is-konfirmasi' }
   });
   if (!result.isConfirmed) return;
-  await dbCloud.collection('openBills').doc(obId).update({ status: 'cancelled', cancelledAt: new Date() });
-  Utils.showToast('Open bill dibatalkan', 'success');
-  document.getElementById('modal-open-bill-list')?.remove();
+  try {
+    await dbCloud.collection('openBills').doc(obId).update({ status: 'cancelled', cancelledAt: new Date() });
+    Utils.showToast('Open bill dibatalkan', 'success');
+    document.getElementById('modal-open-bill-list')?.remove();
+  } catch (error) {
+    Utils.showToast(Utils.getFriendlyError(error, 'Gagal membatalkan open bill. Silakan coba lagi.'), 'error');
+  }
 };
 
-window.toggleDarkMode = function () {
+window.toggleDarkMode = function() {
   const isDark = document.documentElement.classList.toggle('dark');
   localStorage.setItem('darkMode', isDark);
   if (typeof updateThemeColor === 'function') updateThemeColor();

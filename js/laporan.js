@@ -14,12 +14,12 @@ function renderLaporan() {
   const content = `
     <div class="stack-y page-static">
       <div class="tab-nav laporan-tabs">
-        ${['harian','mingguan','bulanan','shift'].map(m => `
+        ${['harian', 'mingguan', 'bulanan', 'shift'].map(m => `
           <button class="tab-btn ${_laporanMode === m ? 'active' : ''}" onclick="window._setLaporanMode('${m}')">
             ${m === 'harian' ? '<i class="fas fa-calendar-day"></i> Harian'
-              : m === 'mingguan' ? '<i class="fas fa-calendar-week"></i> Mingguan'
-              : m === 'bulanan' ? '<i class="fas fa-calendar-alt"></i> Bulanan'
-              : '<i class="fas fa-layer-group"></i> Per Shift'}
+      : m === 'mingguan' ? '<i class="fas fa-calendar-week"></i> Mingguan'
+        : m === 'bulanan' ? '<i class="fas fa-calendar-alt"></i> Bulanan'
+          : '<i class="fas fa-layer-group"></i> Per Shift'}
           </button>
         `).join('')}
       </div>
@@ -65,23 +65,81 @@ function _getOperationalDate(date, jb) {
   return d;
 }
 
-function _allTrx()        { return state.allTransactions || []; }
+function _allTrx() { return state.allTransactions || []; }
 function _allPengeluaran() { return state.pengeluaran || []; }
-function _allMutations()   { return state.stockMutations || []; }
-function _allSessions()    { return state.allSessions || []; }
-function _allOpenBills()   { return state.openBills || []; }
+function _allMutations() { return state.stockMutations || []; }
+function _allSessions() { return state.allSessions || []; }
+function _allOpenBills() { return state.openBills || []; }
+
+async function _fetchManualStockInForPeriod(mode, isoKey) {
+  const local = _getPeriodData(mode, isoKey).stockInList || [];
+  if (typeof dbCloud === 'undefined' || !dbCloud) return local;
+
+  try {
+    const snap = await dbCloud.collection('stock_mutations').where('type', '==', 'in').get();
+    const all = [];
+    snap.forEach(doc => {
+      const m = { id: doc.id, ...doc.data() };
+      if (m.source === 'manual') all.push(m);
+    });
+
+    let matched;
+    if (mode === 'shift') {
+      const sesi = _allSessions().find(s => s.id === isoKey);
+      const openedAt = sesi ? _toDate(sesi.waktuBuka) : new Date(0);
+      const closedAt = sesi?.waktuTutup ? _toDate(sesi.waktuTutup) : new Date();
+      matched = all.filter(m => {
+        if (m.sessionId) return m.sessionId === isoKey;
+        const d = _toDate(m.createdAt);
+        return d >= openedAt && d <= closedAt;
+      });
+    } else {
+      const jb = _jamBuka();
+      let rangeStart = new Date(isoKey);
+      let rangeEnd;
+      if (mode === 'harian') {
+        rangeStart.setHours(jb.h, jb.m, 0, 0);
+        rangeEnd = new Date(rangeStart);
+        rangeEnd.setDate(rangeEnd.getDate() + 1);
+      } else if (mode === 'mingguan') {
+        rangeEnd = _weekRangeEnd(rangeStart, jb);
+      } else if (mode === 'bulanan') {
+        rangeEnd = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + 1, 1);
+        rangeEnd.setHours(jb.h, jb.m, 0, 0);
+      } else {
+        return local;
+      }
+      matched = all.filter(m => {
+        const d = _toDate(m.createdAt);
+        return d >= rangeStart && d < rangeEnd;
+      });
+    }
+
+    const merged = new Map();
+    local.forEach(m => merged.set(m.id || `${m.bahanId}|${m.createdAt}|${m.qty}`, m));
+    matched.forEach(m => merged.set(m.id || `${m.bahanId}|${m.createdAt}|${m.qty}`, m));
+    return Array.from(merged.values());
+  } catch (err) {
+    console.warn('[IniKasir] Gagal memuat mutation penambahan stok langsung:', err);
+    return local;
+  }
+}
+
+function _itemHpp(i) {
+  return Utils.calculateItemHpp(i);
+}
 
 function _sumTrx(trxList) {
   const total = trxList.reduce((s, t) => s + (t.total || 0), 0);
   const subtotal = trxList.reduce((s, t) => s + (t.subtotal ?? t.total ?? 0), 0);
   const discount = trxList.reduce((s, t) => s + (t.discountAmount || 0), 0);
-  const hpp = trxList.reduce((s, t) => s + (t.items || []).reduce((x, i) => x + (Number(i.costPrice || 0) * (i.qty || 0)), 0), 0);
+  const hpp = trxList.reduce((s, t) => s + (t.items || []).reduce((x, i) => x + _itemHpp(i), 0), 0);
   const labaKotor = total - hpp;
-  const cash  = trxList.reduce((s, t) => {
+  const cash = trxList.reduce((s, t) => {
     const qris = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
     return s + (t.metodeBayar === 'tunai' ? (t.total || 0) : Math.max(0, (t.total || 0) - qris));
   }, 0);
-  const qris  = trxList.reduce((s, t) => {
+  const qris = trxList.reduce((s, t) => {
     const qrisAmt = t.metodeBayar === 'qris' ? (t.total || 0) : (t.qrisAmount || 0);
     return s + qrisAmt;
   }, 0);
@@ -89,16 +147,16 @@ function _sumTrx(trxList) {
 }
 
 function _shortRupiah(n) {
-  if (n >= 1000000) return (n / 1000000).toFixed(1).replace('.0','') + 'jt';
-  if (n >= 1000)    return (n / 1000).toFixed(0) + 'rb';
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace('.0', '') + 'jt';
+  if (n >= 1000) return (n / 1000).toFixed(0) + 'rb';
   return String(n);
 }
 
 function _buildLaporanContent() {
-  if (_laporanMode === 'harian')   return _buildListHarian();
+  if (_laporanMode === 'harian') return _buildListHarian();
   if (_laporanMode === 'mingguan') return _buildListMingguan();
-  if (_laporanMode === 'bulanan')  return _buildListBulanan();
-  if (_laporanMode === 'shift')    return _buildListShift();
+  if (_laporanMode === 'bulanan') return _buildListBulanan();
+  if (_laporanMode === 'shift') return _buildListShift();
   return '';
 }
 
@@ -155,6 +213,14 @@ function _listHeader(col1) {
   `;
 }
 
+function _weekRangeEnd(start, jb) {
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  const monthEnd = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+  monthEnd.setHours(jb.h, jb.m, 0, 0);
+  return end > monthEnd ? monthEnd : end;
+}
+
 function _buildListHarian() {
   const jb = _jamBuka();
   const now = new Date();
@@ -189,9 +255,9 @@ function _buildListMingguan() {
   const rows = Array.from({ length: 5 }, (_, i) => {
     const wStart = new Date(baseMonth); wStart.setDate(1 + i * 7);
     if (wStart.getMonth() !== baseMonth.getMonth()) return '';
-    const wEnd = new Date(wStart); wEnd.setDate(wEnd.getDate() + 7);
     const ds = new Date(wStart); ds.setHours(jb.h, jb.m, 0, 0);
-    const de = new Date(wEnd); de.setHours(jb.h, jb.m, 0, 0);
+    const de = _weekRangeEnd(ds, jb);
+    const wEnd = de;
     const trxList = _allTrx().filter(t => { const td = _toDate(t.date); return td >= ds && td < de; });
     const { total } = _sumTrx(trxList);
     const sub = `${_formatTgl(wStart)} – ${_formatTgl(new Date(wEnd.getTime() - 86400000))}`;
@@ -213,7 +279,7 @@ function _buildListBulanan() {
 
   const rows = Array.from({ length: 12 }, (_, i) => {
     const mStart = new Date(baseYear, i, 1); mStart.setHours(jb.h, jb.m, 0, 0);
-    const mEnd   = new Date(baseYear, i + 1, 1); mEnd.setHours(jb.h, jb.m, 0, 0);
+    const mEnd = new Date(baseYear, i + 1, 1); mEnd.setHours(jb.h, jb.m, 0, 0);
     const trxList = _allTrx().filter(t => { const td = _toDate(t.date); return td >= mStart && td < mEnd; });
     const { total } = _sumTrx(trxList);
     const isNow = i === now.getMonth() && baseYear === now.getFullYear();
@@ -274,7 +340,7 @@ function _buildListShift() {
 
 function _getPeriodData(mode, isoKey) {
   const jb = _jamBuka();
-  let trxList = [], pengeluaranList = [], mutationList = [], label = '';
+  let trxList = [], pengeluaranList = [], mutationList = [], stockInList = [], label = '';
   let rangeStart, rangeEnd;
 
   if (mode === 'shift') {
@@ -283,21 +349,30 @@ function _getPeriodData(mode, isoKey) {
     pengeluaranList = _allPengeluaran().filter(p => p.sessionId === isoKey);
     const trxIds = new Set(trxList.map(t => t.id));
     mutationList = _allMutations().filter(m => m.type === 'out' && trxIds.has(m.transactionId));
+    const openedAt = sesi ? _toDate(sesi.waktuBuka) : new Date(0);
+    const closedAt = sesi?.waktuTutup ? _toDate(sesi.waktuTutup) : new Date();
+    stockInList = _allMutations().filter(m => {
+      if (m.type !== 'in' || m.source !== 'manual') return false;
+      if (m.sessionId) return m.sessionId === isoKey;
+      const d = _toDate(m.createdAt);
+      return d >= openedAt && d <= closedAt;
+    });
     const sessionList = sesi ? [sesi] : [];
     const openBillList = _allOpenBills().filter(ob => ob.sessionId === isoKey);
     label = sesi
       ? `Shift ${sesi.shift} — ${sesi.kasir || '-'} — ${_formatTgl(_toDate(sesi.waktuBuka))}`
       : `Shift`;
-    return { trxList, pengeluaranList, mutationList, sessionList, openBillList, label };
+    return { trxList, pengeluaranList, mutationList, stockInList, sessionList, openBillList, label };
   }
 
   if (mode === 'harian') {
     rangeStart = new Date(isoKey);
+    rangeStart.setHours(jb.h, jb.m, 0, 0);
     rangeEnd = new Date(rangeStart); rangeEnd.setDate(rangeEnd.getDate() + 1);
     label = _formatTgl(rangeStart);
   } else if (mode === 'mingguan') {
     rangeStart = new Date(isoKey);
-    rangeEnd = new Date(rangeStart); rangeEnd.setDate(rangeEnd.getDate() + 7);
+    rangeEnd = _weekRangeEnd(rangeStart, jb);
     label = `${_formatTgl(rangeStart)} – ${_formatTgl(new Date(rangeEnd.getTime() - 86400000))}`;
   } else if (mode === 'bulanan') {
     rangeStart = new Date(isoKey);
@@ -310,6 +385,11 @@ function _getPeriodData(mode, isoKey) {
   pengeluaranList = _allPengeluaran().filter(p => { const d = _toDate(p.createdAt); return d >= rangeStart && d < rangeEnd; });
   const trxIds = new Set(trxList.map(t => t.id));
   mutationList = _allMutations().filter(m => m.type === 'out' && trxIds.has(m.transactionId));
+  stockInList = _allMutations().filter(m => {
+    if (m.type !== 'in' || m.source !== 'manual') return false;
+    const d = _toDate(m.createdAt);
+    return d >= rangeStart && d < rangeEnd;
+  });
   const sessionList = _allSessions().filter(s => { const d = _toDate(s.waktuBuka); return d >= rangeStart && d < rangeEnd; });
   const sessionIds = new Set(sessionList.map(s => s.id));
   const openBillList = _allOpenBills().filter(ob => {
@@ -317,19 +397,18 @@ function _getPeriodData(mode, isoKey) {
     const d = _toDate(ob.createdAt);
     return d >= rangeStart && d < rangeEnd;
   });
-  return { trxList, pengeluaranList, mutationList, sessionList, openBillList, label };
+  return { trxList, pengeluaranList, mutationList, stockInList, sessionList, openBillList, label };
 }
 
-function _buildDetailHTML(mode, isoKey) {
-  const { trxList, pengeluaranList, mutationList, sessionList } = _getPeriodData(mode, isoKey);
+function _buildDetailHTML(mode, isoKey, stockInOverride) {
+  const { trxList, pengeluaranList, mutationList, stockInList: periodStockInList, sessionList } = _getPeriodData(mode, isoKey);
+  const stockInList = stockInOverride || periodStockInList;
   const { total, subtotal, discount, hpp, labaKotor, cash, qris } = _sumTrx(trxList);
   const totalPengeluaran = pengeluaranList.reduce((s, p) => s + (p.nominal || 0), 0);
   const modalAwal = (sessionList || []).reduce((s, sess) => s + Number(sess.modalAwal || 0), 0);
-  const cashBersih = cash - totalPengeluaran;
-  const uangDiLaci = modalAwal + cashBersih;
+  const uangDiLaci = modalAwal + cash - totalPengeluaran;
 
   const isTimeMode = (mode === 'harian' || mode === 'shift');
-  const chartProdukLabel = 'Top Produk Terjual';
   const chartTimeLabel = isTimeMode ? 'Penjualan per Jam' : 'Penjualan per Tanggal';
 
   const recap = {};
@@ -338,17 +417,22 @@ function _buildDetailHTML(mode, isoKey) {
     if (!recap[i.name]) recap[i.name] = { qty: 0, total: 0, hpp: 0, laba: 0 };
     const grossSales = (i.price + (i.modifierTotal || 0)) * i.qty;
     const sales = i.netSubtotal ?? Math.max(0, grossSales - (i.discountAmount || 0));
-    const itemHpp = Number(i.costPrice || 0) * i.qty;
+    const itemHpp = _itemHpp(i);
     recap[i.name].qty += i.qty;
     recap[i.name].total += sales;
     recap[i.name].hpp += itemHpp;
     recap[i.name].laba += sales - itemHpp;
     (i.modifiers || []).forEach(mod => {
-      if (!mod.price || mod.price <= 0) return;
+      if (!mod.optionName) return;
       const key = mod.optionName;
-      if (!recapModifier[key]) recapModifier[key] = { qty: 0, total: 0 };
-      recapModifier[key].qty += i.qty;
-      recapModifier[key].total += mod.price * i.qty;
+      if (!recapModifier[key]) recapModifier[key] = { qty: 0, total: 0, hpp: 0, laba: 0 };
+      const modQty = Number(i.qty) || 0;
+      const modSales = Number(mod.price || 0) * modQty;
+      const modHpp = Number(mod.costPrice || 0) * modQty;
+      recapModifier[key].qty += modQty;
+      recapModifier[key].total += modSales;
+      recapModifier[key].hpp += modHpp;
+      recapModifier[key].laba += modSales - modHpp;
     });
   }));
   const recapSorted = Object.entries(recap).sort((a, b) => b[1].qty - a[1].qty);
@@ -358,10 +442,15 @@ function _buildDetailHTML(mode, isoKey) {
   const bahanUsage = {};
   mutationList.forEach(m => {
     if (!bahanUsage[m.namaBahan]) bahanUsage[m.namaBahan] = { qty: 0, satuan: m.satuan || '' };
-    bahanUsage[m.namaBahan].qty += m.qty;
+    bahanUsage[m.namaBahan].qty += Number(m.qty || 0);
   });
 
-  const top5 = recapSorted.slice(0, 5);
+  const bahanStockIn = {};
+  stockInList.forEach(m => {
+    if (!bahanStockIn[m.namaBahan]) bahanStockIn[m.namaBahan] = { qty: 0, satuan: m.satuan || '' };
+    bahanStockIn[m.namaBahan].qty += Number(m.qty || 0);
+  });
+
   const hasCharts = trxList.length > 0;
 
   return `
@@ -380,8 +469,7 @@ function _buildDetailHTML(mode, isoKey) {
           <div class="detail-stat qris"><span>QRIS</span><strong>Rp ${Utils.formatRupiah(qris)}</strong></div>
           <div class="detail-stat"><span>Modal Awal</span><strong>Rp ${Utils.formatRupiah(modalAwal)}</strong></div>
           <div class="detail-stat danger"><span>Pengeluaran</span><strong>-Rp ${Utils.formatRupiah(totalPengeluaran)}</strong></div>
-          <div class="detail-stat success"><span>Cash Bersih</span><strong>Rp ${Utils.formatRupiah(cashBersih)}</strong></div>
-          <div class="detail-stat success"><span>Kas Seharusnya di Laci</span><strong>Rp ${Utils.formatRupiah(uangDiLaci)}</strong></div>
+          <div class="detail-stat success"><span>Cash Bersih</span><strong>Rp ${Utils.formatRupiah(uangDiLaci)}</strong></div>
         </div>
 
         ${hasCharts ? `
@@ -399,15 +487,15 @@ function _buildDetailHTML(mode, isoKey) {
       <div class="laporan-detail-section">
         <div class="laporan-section-title"><i class="fas fa-trophy"></i> Produk Terjual</div>
         ${recapSorted.length === 0
-          ? '<p class="text-muted text-center">Tidak ada data</p>'
-          : `<div class="recap-produk-list">
+      ? '<p class="text-muted text-center">Tidak ada data</p>'
+      : `<div class="recap-produk-list">
               ${recapSorted.map(([name, d], idx) => `
                 <div class="recap-produk-row">
                   <div class="recap-produk-rank">${idx + 1}</div>
                   <div class="recap-produk-info">
-                    <div class="recap-produk-name">${name}</div>
+                    <div class="recap-produk-name">${Utils.escapeHtml(name)}</div>
                     <div class="recap-produk-bar-wrap">
-                    <div class="recap-produk-bar" style="width:${Math.round((d.total/maxRecap)*100)}%"></div>
+                    <div class="recap-produk-bar" style="width:${Math.round((d.total / maxRecap) * 100)}%"></div>
                     </div>
                   </div>
                   <div class="recap-produk-stats">
@@ -418,25 +506,25 @@ function _buildDetailHTML(mode, isoKey) {
                 </div>
               `).join('')}
             </div>`
-        }
+    }
       </div>
 
       ${recapModSorted.length > 0 ? `
         <div class="laporan-detail-section">
-          <div class="laporan-section-title"><i class="fas fa-sliders-h"></i> Add-on / Modifier Terjual</div>
+          <div class="laporan-section-title"><i class="fas fa-sliders-h"></i> Varian/Tambahan Terjual</div>
           <div class="recap-produk-list">
             ${recapModSorted.map(([name, d]) => `
               <div class="recap-produk-row">
                 <div class="recap-produk-rank"><i class="fas fa-plus-circle text-primary text-xs"></i></div>
                 <div class="recap-produk-info">
-                  <div class="recap-produk-name">${name}</div>
+                  <div class="recap-produk-name">${Utils.escapeHtml(name)}</div>
                   <div class="recap-produk-bar-wrap">
-                    <div class="recap-produk-bar bg-info" style="width:${Math.round((d.total/(recapModSorted[0][1].total||1))*100)}%"></div>
+                    <div class="recap-produk-bar bg-info" style="width:${Math.round((d.total / (recapModSorted[0][1].total || 1)) * 100)}%"></div>
                   </div>
                 </div>
                 <div class="recap-produk-stats">
                   <span class="recap-produk-qty">${d.qty}x</span>
-                  <span class="recap-produk-total">+Rp ${Utils.formatRupiah(d.total)}</span>
+                  <span class="recap-produk-total">+Rp ${Utils.formatRupiah(d.total)} · HPP ${Utils.formatRupiah(d.hpp)} · Laba ${Utils.formatRupiah(d.laba)}</span>
                 </div>
               </div>
             `).join('')}
@@ -450,8 +538,22 @@ function _buildDetailHTML(mode, isoKey) {
           <div class="detail-pengeluaran-list">
             ${pengeluaranList.map(p => `
               <div class="detail-pengeluaran-row">
-                <span>${p.nama}</span>
+                <span>${Utils.escapeHtml(p.nama)}</span>
                 <span class="text-danger">-Rp ${Utils.formatRupiah(p.nominal)}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      ${Object.keys(bahanStockIn).length > 0 ? `
+        <div class="laporan-detail-section">
+          <div class="laporan-section-title"><i class="fas fa-arrow-circle-down"></i> Penambahan Stok Bahan</div>
+          <div class="detail-bahan-list">
+            ${Object.entries(bahanStockIn).sort((a, b) => b[1].qty - a[1].qty).map(([nama, d]) => `
+              <div class="detail-bahan-row">
+                <span>${Utils.escapeHtml(nama)}</span>
+                <span class="text-success">+${d.qty} ${Utils.escapeHtml(d.satuan)}</span>
               </div>
             `).join('')}
           </div>
@@ -462,10 +564,10 @@ function _buildDetailHTML(mode, isoKey) {
         <div class="laporan-detail-section">
           <div class="laporan-section-title"><i class="fas fa-boxes"></i> Pemakaian Stok Bahan</div>
           <div class="detail-bahan-list">
-            ${Object.entries(bahanUsage).sort((a,b) => b[1].qty - a[1].qty).map(([nama, d]) => `
+            ${Object.entries(bahanUsage).sort((a, b) => b[1].qty - a[1].qty).map(([nama, d]) => `
               <div class="detail-bahan-row">
-                <span>${nama}</span>
-                <span class="text-muted">${d.qty} ${d.satuan}</span>
+                <span>${Utils.escapeHtml(nama)}</span>
+                <span class="text-muted">${d.qty} ${Utils.escapeHtml(d.satuan)}</span>
               </div>
             `).join('')}
           </div>
@@ -474,23 +576,6 @@ function _buildDetailHTML(mode, isoKey) {
     </div>
   `;
 }
-
-function _mkGradient(ctx, colors) {
-  const grad = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
-  grad.addColorStop(0, colors[0]);
-  grad.addColorStop(1, colors[1]);
-  return grad;
-}
-
-const _CHART_PALETTE = [
-  ['#10b981','#059669'],
-  ['#3b82f6','#2563eb'],
-  ['#f59e0b','#d97706'],
-  ['#ef4444','#dc2626'],
-  ['#8b5cf6','#7c3aed'],
-  ['#06b6d4','#0891b2'],
-  ['#f97316','#ea580c'],
-];
 
 const _TOOLTIP_STYLE = {
   backgroundColor: '#1e293b',
@@ -504,8 +589,8 @@ const _TOOLTIP_STYLE = {
 };
 
 function _fmtAxis(v) {
-  if (v >= 1000000) return (v/1000000).toFixed(1).replace('.0','') + 'jt';
-  if (v >= 1000) return (v/1000).toFixed(0) + 'rb';
+  if (v >= 1000000) return (v / 1000000).toFixed(1).replace('.0', '') + 'jt';
+  if (v >= 1000) return (v / 1000).toFixed(0) + 'rb';
   return String(v);
 }
 
@@ -534,7 +619,6 @@ function _initLaporanCharts(mode, isoKey) {
       hourlyCount[h]++;
     });
 
-    
     const orderedHours = Array.from({ length: 24 }, (_, i) => (startHour + i) % 24);
     const activeOrdered = orderedHours
       .map(h => ({ h, v: hourly[h], c: hourlyCount[h] }))
@@ -596,7 +680,6 @@ function _initLaporanCharts(mode, isoKey) {
         }
       }
     });
-
   } else if (mode === 'mingguan') {
     const dayMap = {};
     trxList.forEach(t => {
@@ -649,7 +732,6 @@ function _initLaporanCharts(mode, isoKey) {
         }
       }
     });
-
   } else if (mode === 'bulanan') {
     const dayMap = {};
     trxList.forEach(t => {
@@ -705,8 +787,7 @@ function _initLaporanCharts(mode, isoKey) {
   }
 }
 
-
-window._showLaporanDetail = function(mode, isoKey) {
+window._showLaporanDetail = async function(mode, isoKey) {
   const { label } = _getPeriodData(mode, isoKey);
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
@@ -729,13 +810,22 @@ window._showLaporanDetail = function(mode, isoKey) {
         </div>
       </div>
       <div class="modal-body">
-        ${_buildDetailHTML(mode, isoKey)}
+        <div class="text-center text-muted" style="padding:24px">Memuat laporan...</div>
       </div>
     </div>
   `;
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
-  requestAnimationFrame(() => _initLaporanCharts(mode, isoKey));
+  try {
+    const stockInList = await _fetchManualStockInForPeriod(mode, isoKey);
+    if (!document.getElementById('modal-laporan-detail')) return;
+    const body = modal.querySelector('.modal-body');
+    if (body) body.innerHTML = _buildDetailHTML(mode, isoKey, stockInList);
+    requestAnimationFrame(() => _initLaporanCharts(mode, isoKey));
+  } catch (err) {
+    const body = modal.querySelector('.modal-body');
+    if (body) body.innerHTML = '<div class="text-center text-danger" style="padding:24px">Gagal memuat laporan.</div>';
+  }
 };
 
 window._hapusLaporanPeriode = async function(mode, isoKey) {
@@ -757,7 +847,6 @@ window._hapusLaporanPeriode = async function(mode, isoKey) {
         ${trxList.length > 0 ? `<li>${trxList.length} Transaksi</li>` : ''}
         ${filteredSessions.length > 0 ? `<li>${filteredSessions.length} Sesi Shift</li>` : ''}
         ${pengeluaranList.length > 0 ? `<li>${pengeluaranList.length} Pengeluaran</li>` : ''}
-        ${mutationList.length > 0 ? `<li>${mutationList.length} Mutasi Stok</li>` : ''}
         ${openBillList.length > 0 ? `<li>${openBillList.length} Open Bill</li>` : ''}
       </ul>
       <p class="mt-sm text-muted" style="font-size:0.8rem">
@@ -773,7 +862,7 @@ window._hapusLaporanPeriode = async function(mode, isoKey) {
   if (!result.isConfirmed) return;
 
   try {
-    Utils.showToast('⏳ Menghapus data total...', 'warning');
+    Utils.showToast('Menghapus data total...', 'warning');
 
     const _batchOp = async (coll, ids) => {
       for (let i = 0; i < ids.length; i += 400) {
@@ -784,7 +873,6 @@ window._hapusLaporanPeriode = async function(mode, isoKey) {
     };
 
     if (trxList.length > 0) await _batchOp('transactions', trxList.map(t => t.id));
-    if (mutationList.length > 0) await _batchOp('stock_mutations', mutationList.map(m => m.id));
     if (pengeluaranList.length > 0) await _batchOp('pengeluaran', pengeluaranList.map(p => p.id));
     if (openBillList.length > 0) await _batchOp('openBills', openBillList.map(ob => ob.id));
     if (filteredSessions.length > 0) await _batchOp('sessions', filteredSessions.map(s => s.id));
@@ -802,29 +890,35 @@ window._exportLaporanPDF = async function(mode, isoKey) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
     const toko = state.settings?.toko || {};
-    const { trxList, pengeluaranList, mutationList, sessionList, label } = _getPeriodData(mode, isoKey);
+    const periodData = _getPeriodData(mode, isoKey);
+    const { trxList, pengeluaranList, sessionList, label } = periodData;
+    const stockInList = await _fetchManualStockInForPeriod(mode, isoKey);
     const { total, subtotal, discount, hpp, labaKotor, cash, qris } = _sumTrx(trxList);
     const totalPengeluaran = pengeluaranList.reduce((s, p) => s + (p.nominal || 0), 0);
     const modalAwal = (sessionList || []).reduce((sum, sess) => sum + Number(sess.modalAwal || 0), 0);
-    const cashBersih = cash - totalPengeluaran;
-    const uangDiLaci = modalAwal + cashBersih;
+    const uangDiLaci = modalAwal + cash - totalPengeluaran;
 
     const recap = {};
     const recapModifier = {};
     trxList.forEach(t => (t.items || []).forEach(i => {
       if (!recap[i.name]) recap[i.name] = { qty: 0, total: 0, hpp: 0, laba: 0 };
       const sales = (i.price + (i.modifierTotal || 0)) * i.qty;
-      const itemHpp = Number(i.costPrice || 0) * i.qty;
+      const itemHpp = _itemHpp(i);
       recap[i.name].qty += i.qty;
       recap[i.name].total += sales;
       recap[i.name].hpp += itemHpp;
       recap[i.name].laba += sales - itemHpp;
       (i.modifiers || []).forEach(mod => {
-        if (!mod.price || mod.price <= 0) return;
+        if (!mod.optionName) return;
         const key = mod.optionName;
-        if (!recapModifier[key]) recapModifier[key] = { qty: 0, total: 0 };
-        recapModifier[key].qty += i.qty;
-        recapModifier[key].total += mod.price * i.qty;
+        if (!recapModifier[key]) recapModifier[key] = { qty: 0, total: 0, hpp: 0, laba: 0 };
+        const modQty = Number(i.qty) || 0;
+        const modSales = Number(mod.price || 0) * modQty;
+        const modHpp = Number(mod.costPrice || 0) * modQty;
+        recapModifier[key].qty += modQty;
+        recapModifier[key].total += modSales;
+        recapModifier[key].hpp += modHpp;
+        recapModifier[key].laba += modSales - modHpp;
       });
     }));
 
@@ -832,22 +926,22 @@ window._exportLaporanPDF = async function(mode, isoKey) {
       .filter(b => b.stock <= (b.minStock || 5))
       .sort((a, b) => a.stock - b.stock);
 
-    const GREEN    = [10, 122, 95];
+    const GREEN = [10, 122, 95];
     const GREEN_DK = [7, 89, 69];
     const GREEN_LT = [241, 250, 246];
-    const DARK     = [15, 23, 42];
-    const GRAY     = [100, 116, 139];
-    const LGRAY    = [248, 250, 252];
-    const BORDER   = [226, 232, 240];
-    const WHITE    = [255, 255, 255];
-    const RED      = [220, 38, 38];
-    const RED_LT   = [254, 242, 242];
-    const ORANGE   = [234, 88, 12];
-    const BLUE_AC  = [59, 130, 246];
-    const TEAL_AC  = [16, 185, 129];
+    const DARK = [15, 23, 42];
+    const GRAY = [100, 116, 139];
+    const LGRAY = [248, 250, 252];
+    const BORDER = [226, 232, 240];
+    const WHITE = [255, 255, 255];
+    const RED = [220, 38, 38];
+    const RED_LT = [254, 242, 242];
+    const ORANGE = [234, 88, 12];
+    const BLUE_AC = [59, 130, 246];
+    const TEAL_AC = [16, 185, 129];
 
     const ML = 12, MR = 12, PW = 210 - ML - MR;
-    const modeLabel = { harian:'Harian', mingguan:'Mingguan', bulanan:'Bulanan', shift:'Per Shift' }[mode] || mode;
+    const modeLabel = { harian: 'Harian', mingguan: 'Mingguan', bulanan: 'Bulanan', shift: 'Per Shift' }[mode] || mode;
 
     doc.setFillColor(...GREEN);
     doc.rect(0, 0, 210, 22, 'F');
@@ -893,8 +987,7 @@ window._exportLaporanPDF = async function(mode, isoKey) {
       { label: 'Modal Awal', value: 'Rp ' + Utils.formatRupiah(modalAwal), accent: BLUE_AC },
     ];
     cards.push({ label: 'Pengeluaran', value: 'Rp ' + Utils.formatRupiah(totalPengeluaran), accent: RED });
-    cards.push({ label: 'Cash Bersih', value: 'Rp ' + Utils.formatRupiah(cashBersih), accent: GREEN });
-    cards.push({ label: 'Kas Seharusnya', value: 'Rp ' + Utils.formatRupiah(uangDiLaci), accent: GREEN });
+    cards.push({ label: 'Cash Bersih', value: 'Rp ' + Utils.formatRupiah(uangDiLaci), accent: GREEN });
 
     const nCols = cards.length <= 3 ? 3 : 4;
     const gap = 2.5;
@@ -934,7 +1027,7 @@ window._exportLaporanPDF = async function(mode, isoKey) {
       offscreen.style.cssText = 'position:fixed;left:-9999px;top:-9999px;visibility:hidden;';
       document.body.appendChild(offscreen);
 
-      const pdfFmtAxis = v => v >= 1000000 ? (v/1000000).toFixed(1).replace('.0','')+'jt' : v >= 1000 ? (v/1000).toFixed(0)+'rb' : String(v);
+      const pdfFmtAxis = v => v >= 1000000 ? (v / 1000000).toFixed(1).replace('.0', '') + 'jt' : v >= 1000 ? (v / 1000).toFixed(0) + 'rb' : String(v);
 
       let timeImgData = null;
 
@@ -942,17 +1035,17 @@ window._exportLaporanPDF = async function(mode, isoKey) {
         const jbPdf = _jamBuka();
         const hourly = Array(24).fill(0);
         trxList.forEach(t => { hourly[_toDate(t.date).getHours()] += (t.total || 0); });
-        const orderedPdf = Array.from({length:24}, (_, i) => (jbPdf.h + i) % 24);
-        const activePdf = orderedPdf.map(h => ({h, v: hourly[h]})).filter(x => x.v > 0);
-        const slots = activePdf.length > 0 ? activePdf : orderedPdf.map(h => ({h, v:0}));
-        const theLabels = slots.map(x => x.h.toString().padStart(2,'0')+':00');
+        const orderedPdf = Array.from({ length: 24 }, (_, i) => (jbPdf.h + i) % 24);
+        const activePdf = orderedPdf.map(h => ({ h, v: hourly[h] })).filter(x => x.v > 0);
+        const slots = activePdf.length > 0 ? activePdf : orderedPdf.map(h => ({ h, v: 0 }));
+        const theLabels = slots.map(x => x.h.toString().padStart(2, '0') + ':00');
         const theData = slots.map(x => x.v);
         const lc = document.createElement('canvas'); lc.width = 620; lc.height = 149;
         offscreen.appendChild(lc);
         const ch2 = new Chart(lc.getContext('2d'), {
           type: 'line',
-          data: { labels: theLabels, datasets: [{ data: theData, borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.15)', borderWidth:2, tension:0.4, fill:true, pointRadius:3 }] },
-          options: { responsive:false, animation:false, plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:9}}}, y:{ticks:{callback:pdfFmtAxis, font:{size:9}}} } }
+          data: { labels: theLabels, datasets: [{ data: theData, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.15)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 3 }] },
+          options: { responsive: false, animation: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { callback: pdfFmtAxis, font: { size: 9 } } } } }
         });
         ch2.render(); timeImgData = lc.toDataURL('image/png'); ch2.destroy();
       } else if (mode === 'mingguan') {
@@ -960,7 +1053,7 @@ window._exportLaporanPDF = async function(mode, isoKey) {
         trxList.forEach(t => {
           const d = _toDate(t.date);
           const opDate = _getOperationalDate(d);
-          const k = opDate.toLocaleDateString('id-ID',{weekday:'short',day:'2-digit',month:'short'});
+          const k = opDate.toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: 'short' });
           const d0 = opDate;
           if (!dayMap[k]) dayMap[k] = { total: 0, ts: d0.getTime() };
           dayMap[k].total += (t.total || 0);
@@ -970,16 +1063,16 @@ window._exportLaporanPDF = async function(mode, isoKey) {
         offscreen.appendChild(dc);
         const ch3 = new Chart(dc.getContext('2d'), {
           type: 'line',
-          data: { labels: entries.map(([k])=>k), datasets:[{ data:entries.map(([,v])=>v.total), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.15)', borderWidth:2, tension:0.4, fill:true, pointRadius:3 }] },
-          options: { responsive:false, animation:false, plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:9}}}, y:{ticks:{callback:pdfFmtAxis, font:{size:9}}} } }
+          data: { labels: entries.map(([k]) => k), datasets: [{ data: entries.map(([, v]) => v.total), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.15)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 3 }] },
+          options: { responsive: false, animation: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { callback: pdfFmtAxis, font: { size: 9 } } } } }
         });
         ch3.render(); timeImgData = dc.toDataURL('image/png'); ch3.destroy();
       } else if (mode === 'bulanan') {
         const dayMap = {};
-        trxList.forEach(t => { 
+        trxList.forEach(t => {
           const d = _toDate(t.date);
           const opDate = _getOperationalDate(d);
-          const k = opDate.toLocaleDateString('id-ID',{weekday:'short',day:'2-digit',month:'short'}); 
+          const k = opDate.toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: 'short' });
           const d0 = opDate;
           if (!dayMap[k]) dayMap[k] = { total: 0, ts: d0.getTime() };
           dayMap[k].total += (t.total || 0);
@@ -989,8 +1082,8 @@ window._exportLaporanPDF = async function(mode, isoKey) {
         offscreen.appendChild(mc);
         const ch4 = new Chart(mc.getContext('2d'), {
           type: 'line',
-          data: { labels: entries2.map(([k])=>k), datasets:[{ data:entries2.map(([,v])=>v.total), borderColor:'#8b5cf6', backgroundColor:'rgba(139,92,246,0.15)', borderWidth:2, tension:0.4, fill:true, pointRadius:3 }] },
-          options: { responsive:false, animation:false, plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:9}}}, y:{ticks:{callback:pdfFmtAxis, font:{size:9}}} } }
+          data: { labels: entries2.map(([k]) => k), datasets: [{ data: entries2.map(([, v]) => v.total), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.15)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 3 }] },
+          options: { responsive: false, animation: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { callback: pdfFmtAxis, font: { size: 9 } } } } }
         });
         ch4.render(); timeImgData = mc.toDataURL('image/png'); ch4.destroy();
       }
@@ -1006,7 +1099,7 @@ window._exportLaporanPDF = async function(mode, isoKey) {
         y += 7;
 
         const chartH = 44;
-        const timeLabel = (mode==='harian'||mode==='shift') ? 'PENJUALAN PER JAM' : 'PENJUALAN PERTANGGAL';
+        const timeLabel = (mode === 'harian' || mode === 'shift') ? 'PENJUALAN PER JAM' : 'PENJUALAN PERTANGGAL';
         doc.setFillColor(...WHITE); doc.setDrawColor(...BORDER); doc.setLineWidth(0.12);
         doc.rect(ML, y, PW, chartH + 5, 'FD');
         doc.setFontSize(5.5); doc.setFont(undefined, 'bold'); doc.setTextColor(...GRAY);
@@ -1055,14 +1148,6 @@ window._exportLaporanPDF = async function(mode, isoKey) {
         return [entry[0], entry[1].qty + ' pcs', 'Rp ' + Utils.formatRupiah(entry[1].total), 'Rp ' + Utils.formatRupiah(entry[1].hpp), 'Rp ' + Utils.formatRupiah(entry[1].laba)];
       });
 
-    if (discount > 0) {
-      section('RINGKASAN DISKON', ORANGE);
-      doc.autoTable({ ...tblBase, startY: y, head: [['Subtotal', 'Diskon', 'Total Setelah Diskon']], body: [[
-        'Rp ' + Utils.formatRupiah(subtotal), '-Rp ' + Utils.formatRupiah(discount), 'Rp ' + Utils.formatRupiah(total)
-      ]], headStyles: { ...tblBase.headStyles, fillColor: ORANGE }, columnStyles: { 0:{halign:'right'},1:{halign:'right'},2:{halign:'right'} } });
-      y = doc.lastAutoTable.finalY + 5;
-    }
-
     if (recapRows.length > 0) {
       section('PRODUK TERJUAL', GREEN);
       doc.autoTable({
@@ -1081,7 +1166,7 @@ window._exportLaporanPDF = async function(mode, isoKey) {
           if (d.section === 'body' && d.row.index === 0) d.cell.styles.fontStyle = 'bold';
           if (d.section === 'head') {
             if (d.column.index === 1) d.cell.styles.halign = 'center';
-            if (d.column.index === 2) d.cell.styles.halign = 'right';
+            if (d.column.index >= 2) d.cell.styles.halign = 'right';
           }
         },
       });
@@ -1091,28 +1176,30 @@ window._exportLaporanPDF = async function(mode, isoKey) {
     const modRows = Object.entries(recapModifier)
       .sort(function(a, b) { return b[1].qty - a[1].qty; })
       .map(function(entry) {
-        return [entry[0], entry[1].qty + 'x', '+Rp ' + Utils.formatRupiah(entry[1].total)];
+        return [entry[0], entry[1].qty + 'x', '+Rp ' + Utils.formatRupiah(entry[1].total), 'Rp ' + Utils.formatRupiah(entry[1].hpp), 'Rp ' + Utils.formatRupiah(entry[1].laba)];
       });
 
     if (modRows.length > 0) {
       const TEAL = [13, 148, 136];
-      section('ADD-ON / MODIFIER TERJUAL', TEAL);
+      section('VARIAN/TAMBAHAN TERJUAL', TEAL);
       doc.autoTable({
         ...tblBase,
         startY: y,
-        head: [['Nama Add-on', 'Terjual', 'Pendapatan Tambahan']],
+        head: [['Nama Varian/Tambahan', 'Terjual', 'Pendapatan Tambahan', 'HPP', 'Laba']],
         body: modRows,
         headStyles: { ...tblBase.headStyles, fillColor: TEAL },
         alternateRowStyles: { fillColor: [240, 253, 250] },
         columnStyles: {
           0: { cellWidth: 'auto' },
           1: { cellWidth: 22, halign: 'center' },
-          2: { cellWidth: 48, halign: 'right' },
+          2: { cellWidth: 42, halign: 'right' },
+          3: { cellWidth: 35, halign: 'right' },
+          4: { cellWidth: 35, halign: 'right' },
         },
         didParseCell: function(d) {
           if (d.section === 'head') {
             if (d.column.index === 1) d.cell.styles.halign = 'center';
-            if (d.column.index === 2) d.cell.styles.halign = 'right';
+            if (d.column.index >= 2) d.cell.styles.halign = 'right';
           }
         },
       });
@@ -1136,6 +1223,36 @@ window._exportLaporanPDF = async function(mode, isoKey) {
         },
         didParseCell: function(d) {
           if (d.section === 'head' && d.column.index === 1) d.cell.styles.halign = 'right';
+        },
+      });
+      y = doc.lastAutoTable.finalY + 5;
+    }
+
+    const stockInRecap = {};
+    stockInList.forEach(function(m) {
+      if (!stockInRecap[m.namaBahan]) stockInRecap[m.namaBahan] = { qty: 0, satuan: m.satuan || '' };
+      stockInRecap[m.namaBahan].qty += Number(m.qty || 0);
+    });
+
+    if (Object.keys(stockInRecap).length > 0) {
+      section('PENAMBAHAN STOK BAHAN', TEAL_AC);
+      doc.autoTable({
+        ...tblBase,
+        startY: y,
+        head: [['Nama Bahan', 'Ditambahkan', 'Satuan']],
+        body: Object.entries(stockInRecap).sort(function(a, b) { return b[1].qty - a[1].qty; }).map(function(entry) {
+          return [entry[0], '+' + entry[1].qty, entry[1].satuan || 'pcs'];
+        }),
+        headStyles: { ...tblBase.headStyles, fillColor: TEAL_AC },
+        alternateRowStyles: { fillColor: [240, 253, 250] },
+        columnStyles: {
+          0: { cellWidth: 'auto' },
+          1: { cellWidth: 32, halign: 'center' },
+          2: { cellWidth: 32, halign: 'center' },
+        },
+        didParseCell: function(d) {
+          if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'center';
+          if (d.section === 'body' && d.column.index > 0) d.cell.styles.halign = 'center';
         },
       });
       y = doc.lastAutoTable.finalY + 5;
@@ -1221,9 +1338,9 @@ function _refreshLaporanContent() {
   if (el) el.innerHTML = _buildLaporanContent();
   else renderLaporan();
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    const modeMap = { 'Harian':'harian', 'Mingguan':'mingguan', 'Bulanan':'bulanan', 'Per Shift':'shift' };
+    const modeMap = { 'Harian': 'harian', 'Mingguan': 'mingguan', 'Bulanan': 'bulanan', 'Per Shift': 'shift' };
     const txt = btn.textContent.trim();
-    btn.classList.toggle('active', Object.entries(modeMap).some(([k,v]) => txt.includes(k) && v === _laporanMode));
+    btn.classList.toggle('active', Object.entries(modeMap).some(([k, v]) => txt.includes(k) && v === _laporanMode));
   });
 }
 

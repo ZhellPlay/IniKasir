@@ -9,18 +9,18 @@ function renderBahanManager() {
   const lowStockMaterials = state.rawMaterials.filter(b => b.stock <= (b.minStock || 5));
   const sortedBahan = SortableTable.sort(state.rawMaterials, 'bahan');
   const filteredBahan = !(_bahanSearchQuery || '').trim() ? sortedBahan :
-    sortedBahan.filter(b => b.name.toLowerCase().includes(_bahanSearchQuery.toLowerCase()) || 
-                          (b.supplier || '').toLowerCase().includes(_bahanSearchQuery.toLowerCase()));
+    sortedBahan.filter(b => b.name.toLowerCase().includes(_bahanSearchQuery.toLowerCase()) ||
+      (b.supplier || '').toLowerCase().includes(_bahanSearchQuery.toLowerCase()));
 
   const content = `
     <div class="stack-y">
       <div class="management-control-bar">
         <div class="search-wrapper">
           <i class="fas fa-search"></i>
-          <input type="text" class="search-input" placeholder="Cari bahan..." 
+          <input type="text" class="search-input" placeholder="Cari bahan..."
                  value="${_bahanSearchQuery}" oninput="window._onBahanSearch(this.value)">
         </div>
-        
+
         <div class="management-stats">
           <div class="stat-item">
             <i class="fas fa-boxes"></i> <span class="text-muted">Total:</span> <span>${state.rawMaterials.length}</span>
@@ -69,21 +69,24 @@ function renderBahanManager() {
           ${filteredBahan.length === 0 ? `
             <tr>
               <td class="td-base" colspan="5">
-                <div class="empty-state compact">
-                  <i class="fas fa-box-open"></i>
-                  <p>${_bahanSearchQuery ? `Tidak ada hasil untuk "${_bahanSearchQuery}"` : 'Belum ada bahan stok'}</p>
-                </div>
+                ${Utils.managementEmptyState({
+    icon: 'fa-box-open',
+    title: 'Belum Ada Bahan',
+    description: 'Tambahkan bahan stok untuk mulai mengelola persediaan.',
+    searchQuery: _bahanSearchQuery,
+    resetHandler: "window._onBahanSearch('')"
+  })}
               </td>
             </tr>
           ` : filteredBahan.map(b => `
             <tr class="neu-table-row">
-              <td class="td-base td-medium" data-label="Nama">${b.name}</td>
+              <td class="td-base td-medium" data-label="Nama">${Utils.escapeHtml(b.name)}</td>
               <td class="td-base" data-label="Stok">
                 <span class="${b.stock <= (b.minStock || 5) ? 'text-danger fw-bold' : ''}">
                   ${b.stock} ${b.satuan || 'pcs'}
                 </span>
               </td>
-              <td class="td-base" data-label="Min Stok">${b.minStock || 5} ${b.satuan || 'pcs'}</td>
+              <td class="td-base" data-label="Min Stok">${b.minStock || 5} ${Utils.escapeHtml(b.satuan || 'pcs')}</td>
               <td class="td-base" data-label="Supplier">${b.supplier || '-'}</td>
               <td class="td-base table-actions" data-label="Aksi">
                 <button class="btn-icon-sm btn-icon-success" onclick="const b=this;Utils.setButtonLoading(b,true);tambahStokBahan('${b.id}').finally(()=>Utils.setButtonLoading(b,false))" title="Tambah Stok">
@@ -173,10 +176,10 @@ async function showAddBahanModal() {
   `;
   document.body.appendChild(modal);
   Utils.pinModalActions(modal);
-  window.closeTambahBahanModal = function () {
+  window.closeTambahBahanModal = function() {
     document.getElementById('tambah-bahan-modal')?.remove();
   };
-  window.prosesTambahBahan = async function () {
+  window.prosesTambahBahan = async function() {
     const name = document.getElementById('bahanName')?.value?.trim();
     if (!name) {
       Utils.showToast('Nama harus diisi', 'error');
@@ -219,7 +222,7 @@ async function tambahStokBahan(id) {
       <div class="bahan-info-box">
         <div class="bahan-info-row">
           <span>Stok Saat Ini:</span>
-          <span class="bahan-info-stock">${bahan.stock} ${bahan.satuan}</span>
+          <span class="bahan-info-stock">${bahan.stock} ${Utils.escapeHtml(bahan.satuan)}</span>
         </div>
       </div>
       <div class="form-group">
@@ -238,7 +241,7 @@ async function tambahStokBahan(id) {
     const input = document.getElementById('tambahQty');
     if (input) input.focus();
   }, 200);
-  window.closeTambahStokModal = function () {
+  window.closeTambahStokModal = function() {
     const modal = document.getElementById('tambah-stok-modal');
     if (modal) {
       modal.classList.add('fade-out');
@@ -247,7 +250,7 @@ async function tambahStokBahan(id) {
       }, 200);
     }
   };
-  window.prosesTambahStok = async function (bahanId) {
+  window.prosesTambahStok = async function(bahanId) {
     try {
       const qtyInput = document.getElementById('tambahQty');
       const notesInput = document.getElementById('tambahNotes');
@@ -262,22 +265,20 @@ async function tambahStokBahan(id) {
         return;
       }
       const notes = notesInput?.value?.trim() || 'Tambah manual';
-      Utils.showToast("⏳ Menyimpan...", 'warning');
+      Utils.showToast("Menyimpan...", 'warning');
       const bahanRef = dbCloud.collection("raw_materials").doc(bahanId);
-      await bahanRef.update({
-        stock: firebase.firestore.FieldValue.increment(qty)
+      const mutationRef = dbCloud.collection("stock_mutations").doc();
+      const now = new Date();
+      const batch = dbCloud.batch();
+      batch.update(bahanRef, { stock: firebase.firestore.FieldValue.increment(qty), updatedAt: now });
+      batch.set(mutationRef, {
+        type: "in", source: "manual", bahanId,
+        namaBahan: bahan.name, qty,
+        sessionId: state.currentSession?.id || null,
+        satuan: bahan.satuan, notes,
+        userId: state.user?.email || 'unknown', createdAt: now
       });
-      await dbCloud.collection("stock_mutations").add({
-        type: "in",
-        source: "manual",
-        bahanId: bahanId,
-        namaBahan: bahan.name,
-        qty: qty,
-        satuan: bahan.satuan,
-        notes: notes,
-        userId: state.user?.email || 'unknown',
-        createdAt: new Date()
-      });
+      await batch.commit();
       Utils.showToast(`Stok ${bahan.name} +${qty} ${bahan.satuan}`);
       if (typeof window.updateAllProductStocks === 'function') {
         await window.updateAllProductStocks();
@@ -312,7 +313,7 @@ async function kurangiStokBahanManual(id) {
       <div class="bahan-info-box">
         <div class="bahan-info-row">
           <span>Stok Saat Ini:</span>
-          <span class="bahan-info-stock">${bahan.stock} ${bahan.satuan}</span>
+          <span class="bahan-info-stock">${bahan.stock} ${Utils.escapeHtml(bahan.satuan)}</span>
         </div>
       </div>
       <div class="form-group">
@@ -330,7 +331,7 @@ async function kurangiStokBahanManual(id) {
     const input = document.getElementById('kurangQty');
     if (input) input.focus();
   }, 200);
-  window.closeKurangStokModal = function () {
+  window.closeKurangStokModal = function() {
     const modal = document.getElementById('kurang-stok-modal');
     if (modal) {
       modal.classList.add('fade-out');
@@ -339,7 +340,7 @@ async function kurangiStokBahanManual(id) {
       }, 200);
     }
   };
-  window.prosesKurangStok = async function (bahanId) {
+  window.prosesKurangStok = async function(bahanId) {
     try {
       const qtyInput = document.getElementById('kurangQty');
       const notesInput = document.getElementById('kurangNotes');
@@ -358,21 +359,19 @@ async function kurangiStokBahanManual(id) {
         return;
       }
       const notes = notesInput?.value?.trim() || 'Pengurangan manual';
-      Utils.showToast("⏳ Menyimpan...", 'warning');
-      await dbCloud.collection("raw_materials").doc(bahanId).update({
-        stock: firebase.firestore.FieldValue.increment(-qty)
+      Utils.showToast("Menyimpan...", 'warning');
+      const bahanRef = dbCloud.collection("raw_materials").doc(bahanId);
+      const mutationRef = dbCloud.collection("stock_mutations").doc();
+      const now = new Date();
+      const batch = dbCloud.batch();
+      batch.update(bahanRef, { stock: firebase.firestore.FieldValue.increment(-qty), updatedAt: now });
+      batch.set(mutationRef, {
+        type: "out", source: "manual", bahanId,
+        namaBahan: bahan.name, qty,
+        satuan: bahan.satuan, notes,
+        userId: state.user?.email || 'unknown', createdAt: now
       });
-      await dbCloud.collection("stock_mutations").add({
-        type: "out",
-        source: "manual",
-        bahanId: bahanId,
-        namaBahan: bahan.name,
-        qty: qty,
-        satuan: bahan.satuan,
-        notes: notes,
-        userId: state.user?.email || 'unknown',
-        createdAt: new Date()
-      });
+      await batch.commit();
       Utils.showToast(`Stok ${bahan.name} -${qty} ${bahan.satuan}`);
       if (typeof window.updateAllProductStocks === 'function') {
         await window.updateAllProductStocks();
@@ -402,7 +401,7 @@ async function editBahan(id) {
       </div>
       <div class="form-group">
         <label class="form-label">Nama Bahan</label>
-        <input type="text" id="editBahanName" class="form-input" value="${bahan.name}">
+        <input type="text" id="editBahanName" class="form-input" value="${Utils.escapeHtml(bahan.name)}">
       </div>
       <div class="form-group">
         <label class="form-label">Satuan</label>
@@ -427,7 +426,7 @@ async function editBahan(id) {
   `;
   document.body.appendChild(modal);
   Utils.pinModalActions(modal);
-  window.closeEditBahanModal = function () {
+  window.closeEditBahanModal = function() {
     const modal = document.getElementById('edit-bahan-modal');
     if (modal) {
       modal.classList.add('fade-out');
@@ -436,14 +435,14 @@ async function editBahan(id) {
       }, 200);
     }
   };
-  window.prosesEditBahan = async function (bahanId) {
+  window.prosesEditBahan = async function(bahanId) {
     try {
       const name = document.getElementById('editBahanName')?.value;
       if (!name) {
         Utils.showToast("Nama harus diisi", 'error');
         return;
       }
-      Utils.showToast("⏳ Menyimpan...", 'warning');
+      Utils.showToast("Menyimpan...", 'warning');
       await dbCloud.collection("raw_materials").doc(bahanId).update({
         name: name,
         satuan: document.getElementById('editBahanSatuan').value,
@@ -482,13 +481,13 @@ async function lihatRiwayatStok(bahanId) {
 
     return mutations.map(m => {
       const tgl = m.createdAt?.seconds
-        ? new Date(m.createdAt.seconds * 1000).toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
+        ? new Date(m.createdAt.seconds * 1000).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
         : '-';
-      const isIn  = m.type === 'in';
+      const isIn = m.type === 'in';
       const isSale = m.source === 'sale';
       const label = isSale ? 'Penjualan' : m.source === 'manual' ? (isIn ? 'Tambah Manual' : 'Kurang Manual') : m.source || '-';
-      const icon  = isIn ? 'fa-arrow-up text-success' : 'fa-arrow-down text-danger';
-      const sign  = isIn ? '+' : '-';
+      const icon = isIn ? 'fa-arrow-up text-success' : 'fa-arrow-down text-danger';
+      const sign = isIn ? '+' : '-';
       return `
         <div class="riwayat-stok-row" data-id="${m.id}">
           <div class="riwayat-stok-left">
@@ -520,7 +519,7 @@ async function lihatRiwayatStok(bahanId) {
       <div class="modal-header">
         <div>
           <h3><i class="fas fa-history"></i> Riwayat Stok</h3>
-          <small class="text-muted">${bahan.name} — Stok: ${bahan.stock} ${bahan.satuan}</small>
+          <small class="text-muted">${Utils.escapeHtml(bahan.name)} — Stok: ${bahan.stock} ${Utils.escapeHtml(bahan.satuan)}</small>
         </div>
         <button class="btn-icon-sm" onclick="document.getElementById('modal-riwayat-stok').remove()">
           <i class="fas fa-times"></i>
@@ -539,8 +538,8 @@ async function lihatRiwayatStok(bahanId) {
       title: 'Hapus Riwayat Stok?',
       html: `Stok akan di-<b>rollback</b>:<br>
         ${type === 'in'
-          ? `<span class="text-danger">-${qty} ${bahan.satuan}</span> (pembelian dibatalkan)`
-          : `<span class="text-success">+${qty} ${bahan.satuan}</span> (pengurangan dibatalkan)`}`,
+          ? `<span class="text-danger">-${qty} ${Utils.escapeHtml(bahan.satuan)}</span> (pembelian dibatalkan)`
+          : `<span class="text-success">+${qty} ${Utils.escapeHtml(bahan.satuan)}</span> (pengurangan dibatalkan)`}`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Ya, Hapus & Rollback',
@@ -572,7 +571,8 @@ async function lihatRiwayatStok(bahanId) {
 
 async function hapusBahan(id) {
   if (!await Utils.showConfirm("Yakin hapus bahan ini?")) return;
-  const digunakan = state.menus.some(m => m.resep?.some(r => r.bahanId === id));
+  const digunakan = state.menus.some(m => m.resep?.some(r => r.bahanId === id))
+    || (state.modifierGroups || []).some(g => (g.options || []).some(opt => (opt.resep || []).some(r => r.bahanId === id)));
   if (digunakan) {
     Utils.showToast("Bahan masih digunakan di resep!", 'error');
     return;

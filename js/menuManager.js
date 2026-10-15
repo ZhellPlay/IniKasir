@@ -173,8 +173,8 @@ function renderMenuManager() {
     ...state.categories.filter(c => c.system)
   ];
   const filteredCategories = !(_menuSearchQuery || '').trim() ? sortedCategories :
-    sortedCategories.filter(c => c.name.toLowerCase().includes(_menuSearchQuery.toLowerCase()) || 
-                          (state.menus || []).filter(m => m.categoryId === c.id).some(m => m.name.toLowerCase().includes(_menuSearchQuery.toLowerCase())));
+    sortedCategories.filter(c => c.name.toLowerCase().includes(_menuSearchQuery.toLowerCase()) ||
+      (state.menus || []).filter(m => m.categoryId === c.id).some(m => m.name.toLowerCase().includes(_menuSearchQuery.toLowerCase())));
 
   const totalMenus = (state.menus || []).length;
 
@@ -183,10 +183,10 @@ function renderMenuManager() {
       <div class="management-control-bar">
         <div class="search-wrapper">
           <i class="fas fa-search"></i>
-          <input type="text" class="search-input" placeholder="Cari kategori atau menu..." 
+          <input type="text" class="search-input" placeholder="Cari kategori atau menu..."
                  value="${_menuSearchQuery}" oninput="window._onMenuSearch(this.value)">
         </div>
-        
+
         <div class="management-stats">
           <div class="stat-item">
             <i class="fas fa-th-large"></i> <span class="text-muted">Kategori:</span> <span>${state.categories.length}</span>
@@ -211,22 +211,19 @@ function renderMenuManager() {
       </div>
 
       ${filteredCategories.length === 0 ? `
-        <div class="empty-center">
-          <div class="empty-state large">
-            <i class="fas ${_menuSearchQuery ? 'fa-search' : 'fa-utensils'}"></i>
-            <h2>${_menuSearchQuery ? 'Kategori Tidak Ditemukan' : 'Belum Ada Kategori'}</h2>
-            <p>${_menuSearchQuery ? `Tidak ada hasil untuk "${_menuSearchQuery}"` : 'Tambahkan kategori menu pertama Anda untuk memulai'}</p>
-            ${_menuSearchQuery ? `
-              <button class="btn btn-secondary btn-sm" onclick="window._onMenuSearch('')">Reset Pencarian</button>
-            ` : ''}
-          </div>
-        </div>
+        ${Utils.managementEmptyState({
+    icon: 'fa-utensils',
+    title: 'Belum Ada Kategori',
+    description: 'Tambahkan kategori menu untuk mulai mengelola produk.',
+    searchQuery: _menuSearchQuery,
+    resetHandler: "window._onMenuSearch('')"
+  })}
       ` : `
         <div class="category-grid">
           ${filteredCategories.map(c => `
             <div class="category-card">
               <div class="section-category-header">
-                <h3>${c.name}</h3>
+                <h3>${Utils.escapeHtml(c.name)}</h3>
                 ${c.system ? '<span class="badge-system">System</span>' : ''}
               </div>
               <div class="menu-item-meta">
@@ -297,12 +294,15 @@ async function editCategory(id) {
 
 async function deleteCategory(id) {
   if (!await Utils.showConfirm("Hapus kategori? Menu akan dipindahkan ke Lainnya.")) return;
+  const lainnya = state.categories.find(c => c.system);
+  if (!lainnya) { Utils.showToast("Kategori Lainnya tidak ditemukan", 'error'); return; }
   try {
-    const lainnya = state.categories.find(c => c.system);
+    const batch = dbCloud.batch();
     for (const m of state.menus.filter(m => m.categoryId === id)) {
-      await dbCloud.collection("menus").doc(m.id).update({ categoryId: lainnya.id });
+      batch.update(dbCloud.collection("menus").doc(m.id), { categoryId: lainnya.id });
     }
-    await dbCloud.collection("categories").doc(id).delete();
+    batch.delete(dbCloud.collection("categories").doc(id));
+    await batch.commit();
     Utils.showToast("Kategori dihapus");
   } catch (error) {
     Utils.showToast(Utils.getFriendlyError(error), 'error');
@@ -318,7 +318,7 @@ function openCategory(id) {
   const category = state.categories.find(c => c.id === id);
   if (!category) return;
   const menus = state.menus.filter(m => m.categoryId === id);
-  
+
   const filteredMenus = !(state.categorySearchQuery || '').trim() ? menus :
     menus.filter(m => m.name.toLowerCase().includes(state.categorySearchQuery.toLowerCase()));
 
@@ -328,10 +328,10 @@ function openCategory(id) {
       <div class="management-control-bar">
         <div class="search-wrapper">
           <i class="fas fa-search"></i>
-          <input type="text" class="search-input" placeholder="Cari menu di kategori ini..." 
-                 value="${state.categorySearchQuery || ''}" oninput="window._onCatSearch(this.value)">
+          <input type="text" class="search-input" placeholder="Cari menu di kategori ini..."
+                 value="${Utils.escapeHtml(state.categorySearchQuery || '')}" oninput="window._onCatSearch(this.value)">
         </div>
-        
+
         <div class="management-stats" id="cat-stats-container">
           ${_renderCatStatsHTML(category, menus, filteredMenus)}
         </div>
@@ -382,7 +382,7 @@ function openCategory(id) {
 function _renderCatStatsHTML(category, allMenus, filteredMenus) {
   return `
     <div class="stat-item">
-      <i class="fas fa-folder-open text-primary mr-1"></i> <strong>${category.name}</strong>
+      <i class="fas fa-folder-open text-primary mr-1"></i> <strong>${Utils.escapeHtml(category.name)}</strong>
     </div>
     <div class="stat-divider"></div>
     <div class="stat-item">
@@ -405,7 +405,7 @@ function _renderCatActionsHTML(categoryId, filteredMenus) {
     <button class="btn btn-secondary" onclick="toggleSelectAllMenu('${categoryId}')">
       ${state.selectedMenus.size === filteredMenus.length && filteredMenus.length > 0 ? 'Batal Pilih' : 'Pilih Semua'}
     </button>
-    <button class="btn btn-danger" onclick="const b=this;Utils.setButtonLoading(b,true);deleteSelectedMenus('${categoryId}').finally(()=>Utils.setButtonLoading(b,false))" 
+    <button class="btn btn-danger" onclick="const b=this;Utils.setButtonLoading(b,true);deleteSelectedMenus('${categoryId}').finally(()=>Utils.setButtonLoading(b,false))"
             ${state.selectedMenus.size === 0 ? 'disabled' : ''}>
       <i class="fas fa-trash"></i> Hapus ${state.selectedMenus.size > 0 ? `(${state.selectedMenus.size})` : ''}
     </button>
@@ -414,7 +414,13 @@ function _renderCatActionsHTML(categoryId, filteredMenus) {
 
 function _renderCatTableBodyHTML(sortedMenus) {
   if (sortedMenus.length === 0) {
-    return '<tr><td colspan="7" class="td-base text-center text-muted">Tidak ada menu ditemukan</td></tr>';
+    return `<tr class="management-empty-row"><td colspan="7">${Utils.managementEmptyState({
+      icon: 'fa-utensils',
+      title: 'Belum Ada Menu',
+      description: 'Tambahkan menu untuk mulai mengelola produk.',
+      searchQuery: _menuSearchQuery,
+      resetHandler: "window._onMenuSearch('')"
+    })}</td></tr>`;
   }
   return sortedMenus.map(m => {
     const isSelected = state.selectedMenus.has(m.id);
@@ -426,20 +432,20 @@ function _renderCatTableBodyHTML(sortedMenus) {
         </td>
         <td class="td-base" data-label="">
           ${m.imageUrl
-            ? `<img src="${m.imageUrl}" alt="foto" class="img-table-thumb">`
-            : `<span class="img-table-placeholder"><i class="fas fa-image"></i></span>`
-          }
+        ? `<img src="${Utils.escapeHtml(m.imageUrl)}" alt="foto" class="img-table-thumb">`
+        : `<span class="img-table-placeholder"><i class="fas fa-image"></i></span>`
+      }
         </td>
-        <td class="td-base td-medium" data-label="Nama">${m.name}</td>
+        <td class="td-base td-medium" data-label="Nama">${Utils.escapeHtml(m.name)}</td>
         <td class="td-base" data-label="Harga Modal">Rp ${Utils.formatRupiah(m.costPrice || 0)}</td>
         <td class="td-base" data-label="Harga Jual">Rp ${Utils.formatRupiah(m.salePrice ?? m.price ?? 0)}</td>
         <td class="td-base" data-label="Stok">
           ${m.resep ?
-            `<span class="text-base-sm"><i class="fas fa-cubes"></i> ${stokOtomatis} porsi</span>` :
-            m.useStock ?
-              `<span class="text-base-sm"><i class="fas fa-box"></i> ${m.stock}</span>` :
-              '<span class="text-base-sm text-muted"><i class="fas fa-infinity"></i></span>'
-          }
+        `<span class="text-base-sm"><i class="fas fa-cubes"></i> ${stokOtomatis} porsi</span>` :
+        m.useStock ?
+          `<span class="text-base-sm"><i class="fas fa-box"></i> ${m.stock}</span>` :
+          '<span class="text-base-sm text-muted"><i class="fas fa-infinity"></i></span>'
+      }
         </td>
         <td class="td-base table-actions" data-label="Aksi">
           <button class="btn-icon-sm" onclick="event.stopPropagation(); editMenu('${m.id}')" title="Edit">
@@ -467,7 +473,7 @@ function _saveMenuScroll() {
 
 async function showAddMenuModal(categoryId) {
   const bahanOptions = state.rawMaterials.map(b =>
-    `<option value="${b.id}" data-satuan="${b.satuan || 'pcs'}">${b.name} (${b.satuan || 'pcs'})</option>`
+    `<option value="${b.id}" data-satuan="${Utils.escapeHtml(b.satuan || 'pcs')}">${Utils.escapeHtml(b.name)} (${Utils.escapeHtml(b.satuan || 'pcs')})</option>`
   ).join('');
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
@@ -544,12 +550,12 @@ async function showAddMenuModal(categoryId) {
   Utils.pinModalActions(modal);
   const useStockCheck = document.getElementById('useStock');
   if (useStockCheck) {
-    useStockCheck.addEventListener('change', function (e) {
+    useStockCheck.addEventListener('change', function(e) {
       document.getElementById('stockField').classList.toggle('is-hidden', !e.target.checked);
     });
   }
   setupRecipeRowListeners(0);
-  window.addRecipeRow = function () {
+  window.addRecipeRow = function() {
     const container = document.getElementById('recipeContainer');
     const index = container.children.length;
     const row = document.createElement('div');
@@ -567,17 +573,17 @@ async function showAddMenuModal(categoryId) {
     container.appendChild(row);
     setupRecipeRowListeners(index);
   };
-  window.removeRecipeRow = function (index) {
+  window.removeRecipeRow = function(index) {
     const row = document.getElementById(`recipe-row-${index}`);
     if (row && document.querySelectorAll('.recipe-row').length > 1) {
       row.remove();
     }
   };
-  window.closeAddMenuModal = function () {
+  window.closeAddMenuModal = function() {
     const modal = document.getElementById('add-menu-modal');
     if (modal) modal.remove();
   };
-  window.previewMenuImage = async function (input, previewId) {
+  window.previewMenuImage = async function(input, previewId) {
     if (!input.files || !input.files[0]) return;
     const base64 = await showImageCropModal(input.files[0]);
     input.value = '';
@@ -587,14 +593,14 @@ async function showAddMenuModal(categoryId) {
     const previewImg = document.getElementById(previewId + 'Img');
     if (preview && previewImg) { previewImg.src = base64; preview.classList.remove('hidden'); }
   };
-  window.clearMenuImage = function (inputId, previewId) {
+  window.clearMenuImage = function(inputId, previewId) {
     const input = document.getElementById(inputId);
     const preview = document.getElementById(previewId);
     if (input) input.value = '';
     if (preview) preview.classList.add('hidden');
     window._menuCroppedImage = null;
   };
-  window.saveNewMenu = async function (catId) {
+  window.saveNewMenu = async function(catId) {
     try {
       const nameInput = document.getElementById('menuName');
       const priceInput = document.getElementById('menuPrice');
@@ -638,7 +644,7 @@ async function showAddMenuModal(categoryId) {
           }
         }
       }
-      Utils.showToast("⏳ Menyimpan menu...", 'warning');
+      Utils.showToast("Menyimpan menu...", 'warning');
       let imageUrl = null;
       if (window._menuCroppedImage) {
         imageUrl = window._menuCroppedImage;
@@ -652,7 +658,7 @@ async function showAddMenuModal(categoryId) {
         categoryId: catId,
         useStock: useStock,
         stock: stock,
-        resep: resep.length > 0 ? resep : null,
+        resep: useStock ? null : (resep.length > 0 ? resep : null),
         imageUrl: imageUrl,
         active: true,
         createdAt: new Date()
@@ -672,7 +678,7 @@ async function showAddMenuModal(categoryId) {
   function setupRecipeRowListeners(index) {
     const select = document.getElementById(`bahan-${index}`);
     if (select) {
-      select.addEventListener('change', function (e) {
+      select.addEventListener('change', function(e) {
         const unit = e.target.options[e.target.selectedIndex]?.dataset?.satuan || 'pcs';
         const unitSpan = document.getElementById(`unit-${index}`);
         if (unitSpan) unitSpan.textContent = unit;
@@ -687,10 +693,10 @@ async function editMenu(id) {
   const existingModal = document.getElementById('custom-edit-modal');
   if (existingModal) existingModal.remove();
   const bahanOptions = state.rawMaterials.map(b =>
-    `<option value="${b.id}" data-satuan="${b.satuan || 'pcs'}">${b.name} (${b.satuan || 'pcs'})</option>`
+    `<option value="${b.id}" data-satuan="${Utils.escapeHtml(b.satuan || 'pcs')}">${Utils.escapeHtml(b.name)} (${Utils.escapeHtml(b.satuan || 'pcs')})</option>`
   ).join('');
   const categoryOptions = state.categories.map(category =>
-    `<option value="${category.id}" ${category.id === menu.categoryId ? 'selected' : ''}>${category.name}</option>`
+    `<option value="${category.id}" ${category.id === menu.categoryId ? 'selected' : ''}>${Utils.escapeHtml(category.name)}</option>`
   ).join('');
   const modal = document.createElement('div');
   modal.id = 'custom-edit-modal';
@@ -707,7 +713,7 @@ async function editMenu(id) {
       <div class="modal-menu-detail-body">
         <div class="form-group">
           <label class="form-label">Nama Menu</label>
-          <input type="text" id="editName" class="form-input" value="${menu.name}">
+          <input type="text" id="editName" class="form-input" value="${Utils.escapeHtml(menu.name)}">
         </div>
         <div class="form-group edit-menu-category">
           <label class="form-label">Kategori</label>
@@ -731,7 +737,7 @@ async function editMenu(id) {
           <div class="flex-center gap-3 flex-wrap">
             ${menu.imageUrl ? `
               <div id="editCurrentPhoto" class="image-preview-wrapper">
-                <img src="${menu.imageUrl}" class="img-preview-sm">
+                <img src="${Utils.escapeHtml(menu.imageUrl)}" class="img-preview-sm">
                 <button type="button" onclick="document.getElementById('editDeletePhoto').value='1';document.getElementById('editCurrentPhoto').classList.add('hidden');" class="btn-remove-photo" title="Hapus foto">×</button>
               </div>
             ` : ''}
@@ -766,11 +772,11 @@ async function editMenu(id) {
                 <select class="recipe-select" id="editBahan-${i}">
                   <option value="">Pilih Bahan</option>
                   ${state.rawMaterials.map(b =>
-    `<option value="${b.id}" data-satuan="${b.satuan || 'pcs'}" ${b.id === r.bahanId ? 'selected' : ''}>${b.name} (${b.satuan || 'pcs'})</option>`
+    `<option value="${b.id}" data-satuan="${Utils.escapeHtml(b.satuan || 'pcs')}" ${b.id === r.bahanId ? 'selected' : ''}>${Utils.escapeHtml(b.name)} (${Utils.escapeHtml(b.satuan || 'pcs')})</option>`
   ).join('')}
                 </select>
                 <input type="number" class="recipe-input" id="editQty-${i}" placeholder="Jumlah" min="0" step="0.1" value="${r.qty}">
-                <span class="recipe-unit" id="editUnit-${i}">${r.satuan || 'pcs'}</span>
+                <span class="recipe-unit" id="editUnit-${i}">${Utils.escapeHtml(r.satuan || 'pcs')}</span>
                 <button type="button" class="recipe-remove" onclick="removeEditRecipeRow(${i})">×</button>
               </div>
             `).join('') || `
@@ -795,7 +801,7 @@ async function editMenu(id) {
   `;
   document.body.appendChild(modal);
   Utils.pinModalActions(modal);
-  document.getElementById('editUseStock')?.addEventListener('change', function (e) {
+  document.getElementById('editUseStock')?.addEventListener('change', function(e) {
     const stockField = document.getElementById('editStockField');
     if (stockField) {
       stockField.classList.toggle('is-hidden', !e.target.checked);
@@ -805,7 +811,7 @@ async function editMenu(id) {
   rows.forEach((row, i) => {
     const select = document.getElementById(`editBahan-${i}`);
     if (select) {
-      select.addEventListener('change', function (e) {
+      select.addEventListener('change', function(e) {
         const unit = e.target.options[e.target.selectedIndex]?.dataset?.satuan || 'pcs';
         const unitSpan = document.getElementById(`editUnit-${i}`);
         if (unitSpan) unitSpan.textContent = unit;
@@ -814,12 +820,12 @@ async function editMenu(id) {
   });
 }
 
-window.closeEditModal = function () {
+window.closeEditModal = function() {
   const modal = document.getElementById('custom-edit-modal');
   if (modal) modal.remove();
 };
 
-window.previewEditImage = async function (input) {
+window.previewEditImage = async function(input) {
   if (!input.files || !input.files[0]) return;
   const base64 = await showImageCropModal(input.files[0]);
   input.value = '';
@@ -830,7 +836,7 @@ window.previewEditImage = async function (input) {
   if (preview && previewImg) { previewImg.src = base64; preview.classList.remove('hidden'); }
 };
 
-window.clearEditImage = function () {
+window.clearEditImage = function() {
   const input = document.getElementById('editMenuImage');
   const preview = document.getElementById('editImagePreview');
   if (input) input.value = '';
@@ -838,11 +844,11 @@ window.clearEditImage = function () {
   window._editCroppedImage = null;
 };
 
-window.addEditRecipeRow = function () {
+window.addEditRecipeRow = function() {
   const container = document.getElementById('editRecipeContainer');
   if (!container) return;
   const bahanOptions = state.rawMaterials.map(b =>
-    `<option value="${b.id}" data-satuan="${b.satuan || 'pcs'}">${b.name} (${b.satuan || 'pcs'})</option>`
+    `<option value="${b.id}" data-satuan="${Utils.escapeHtml(b.satuan || 'pcs')}">${Utils.escapeHtml(b.name)} (${Utils.escapeHtml(b.satuan || 'pcs')})</option>`
   ).join('');
   const index = container.children.length;
   const row = document.createElement('div');
@@ -860,7 +866,7 @@ window.addEditRecipeRow = function () {
   container.appendChild(row);
   const select = document.getElementById(`editBahan-${index}`);
   if (select) {
-    select.addEventListener('change', function (e) {
+    select.addEventListener('change', function(e) {
       const unit = e.target.options[e.target.selectedIndex]?.dataset?.satuan || 'pcs';
       const unitSpan = document.getElementById(`editUnit-${index}`);
       if (unitSpan) unitSpan.textContent = unit;
@@ -868,14 +874,14 @@ window.addEditRecipeRow = function () {
   }
 };
 
-window.removeEditRecipeRow = function (index) {
+window.removeEditRecipeRow = function(index) {
   const row = document.getElementById(`edit-recipe-row-${index}`);
   if (row && document.querySelectorAll('#editRecipeContainer .recipe-row').length > 1) {
     row.remove();
   }
 };
 
-window.saveEditMenu = async function (id) {
+window.saveEditMenu = async function(id) {
   const nameInput = document.getElementById('editName');
   const priceInput = document.getElementById('editPrice');
   const categoryInput = document.getElementById('editCategoryId');
@@ -926,7 +932,7 @@ window.saveEditMenu = async function (id) {
     }
   }
   try {
-    Utils.showToast("⏳ Menyimpan perubahan...", 'warning');
+    Utils.showToast("Menyimpan perubahan...", 'warning');
     let imageUrl = undefined;
     const deletePhoto = document.getElementById('editDeletePhoto')?.value === '1';
     if (deletePhoto && !window._editCroppedImage) {
