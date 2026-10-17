@@ -278,7 +278,7 @@ function showPrintDialog(trx) {
       <div class="printer-options">
         <button class="printer-option" onclick="const b=this;Utils.setButtonLoading(b,true);connectAndPrintFromDialog('${trx.id}').finally(()=>Utils.setButtonLoading(b,false))">
           <div class="printer-option-icon">
-            <i class="fas fa-bluetooth"></i>
+            <i class="fab fa-bluetooth-b"></i>
           </div>
           <div class="printer-option-content">
             <div class="printer-option-title">Cari & Hubungkan Printer</div>

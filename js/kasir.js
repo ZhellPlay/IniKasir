@@ -725,7 +725,7 @@ async function pilihMeja() {
   modal.innerHTML = `
     <div class="modal modal-pilih-meja">
       <h3><i class="fas fa-chair"></i> Pilih Meja</h3>
-      <div class="table-grid">
+      <div class="table-grid${tables.length ? '' : ' table-grid-empty'}">
         ${tables.length ? tables.map(meja => `
           <button class="table-btn" data-id="${meja.id}" data-nomor="${Utils.escapeHtml(meja.nomor)}" data-nama="${Utils.escapeHtml(meja.nama)}">
             <div class="table-number">${Utils.escapeHtml(meja.nomor)}</div>
