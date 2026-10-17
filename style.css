@@ -2971,22 +2971,22 @@ textarea {
   color: var(--dk-text-muted);
 }
 
-.printer-option i:last-child {
+.printer-option > i:last-child {
   color: var(--text-muted);
   font-size: 16px;
   transition: var(--transition);
 }
 
-.dark .printer-option i:last-child {
+.dark .printer-option > i:last-child {
   color: var(--dk-text-muted);
 }
 
-.printer-option:hover i:last-child {
+.printer-option:hover > i:last-child {
   color: var(--primary);
   transform: translateX(4px);
 }
 
-.dark .printer-option:hover i:last-child {
+.dark .printer-option:hover > i:last-child {
   color: var(--dk-primary-light);
 }
 
@@ -4038,7 +4038,7 @@ textarea {
     text-align: center;
   }
 
-  .printer-option i:last-child {
+  .printer-option > i:last-child {
     display: none;
   }
 

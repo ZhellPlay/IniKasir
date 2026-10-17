@@ -2973,6 +2973,12 @@ textarea {
   align-content: start;
 }
 
+.modal-pilih-meja .table-grid-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .modal-pilih-meja .modal-actions {
   flex-shrink: 0;
 }
