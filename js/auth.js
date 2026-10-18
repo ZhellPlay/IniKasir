@@ -1,4 +1,4 @@
-firebase.auth().onAuthStateChanged(async function(user) {
+async function handleAuthStateChange(user) {
   try {
     cleanupListeners();
   } catch (error) {
@@ -21,7 +21,9 @@ firebase.auth().onAuthStateChanged(async function(user) {
     startRealtimeSessions();
     renderKasir();
   }
-});
+}
+
+document.addEventListener('DOMContentLoaded', () => firebase.auth().onAuthStateChanged(handleAuthStateChange));
 
 function renderLogin() {
   app.innerHTML = `

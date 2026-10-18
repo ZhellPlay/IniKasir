@@ -637,8 +637,8 @@ async function editTemplateDiskon(index) {
             tipe: document.getElementById('editDiscountTemplateType')?.value === 'nominal' ? 'nominal' : 'percent',
             nilai: Math.max(0, Number(document.getElementById('editDiscountTemplateValue')?.value || 0))
           };
-        }      
-}
+        }
+      }
     ]
   });
   if (result !== 'save') return;
@@ -1060,8 +1060,8 @@ async function editKasir(index) {
       {
         text: 'Simpan', action: 'save', class: 'btn-primary', onClick: () => {
           window._editKasirNama = document.getElementById('editKasirNama')?.value || '';
-        }      
-}
+        }
+      }
     ]
   });
 

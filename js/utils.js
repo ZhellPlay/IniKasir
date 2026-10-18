@@ -294,6 +294,13 @@ window.Utils = {
       color: _cssVar('--swal-text'),
       backdrop: _cssVar('--swal-backdrop'),
       customClass: { popup: options.customClass || 'swal2-is-modal' },
+      didOpen: function(popup) {
+        let actions = popup.querySelector('.swal2-actions');
+        let extra = popup.querySelector('.swal-footer-btns');
+        if (!actions || !extra) return;
+        while (extra.firstChild) actions.appendChild(extra.firstChild);
+        extra.remove();
+      },
       preConfirm: function() {
         if (window._modalAction === 'cancel') window._modalAction = (primaryBtn && primaryBtn.action) || 'save';
         let btn = (options.buttons || []).find(function(b) { return b.action === window._modalAction; });
