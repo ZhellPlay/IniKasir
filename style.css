@@ -73,8 +73,8 @@
   --color-kas-bersih: #68d391;
   --color-printer-online: #22c55e;
   --color-printer-offline: #e53e3e;
-  --btn-shift-bg: #0f9d7a;
-  --btn-shift-bg-hover: #0a7a5f;
+  --btn-shift-bg: #0b8466;
+  --btn-shift-bg-hover: #096c54;
   --btn-shift-text: #ffffff;
   --nav-dot-color: #22c55e;
   --nav-dot-size: 8px;
@@ -1052,7 +1052,7 @@ main {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  background: linear-gradient(135deg, var(--btn-shift-bg), #16c26a);
+  background: linear-gradient(135deg, var(--btn-shift-bg), #0a7a5f);
   color: var(--btn-shift-text);
   border: none;
   height: 32px;
