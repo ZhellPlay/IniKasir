@@ -494,12 +494,12 @@ async function showAddMenuModal(categoryId) {
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Harga Modal (Rp)</label>
-          <input type="number" id="menuCostPrice" class="form-input" placeholder="10000" min="0">
+          <input type="text" inputmode="numeric" data-money id="menuCostPrice" class="form-input" placeholder="10.000">
           <small class="text-muted">Untuk menghitung HPP & laba kotor.</small>
         </div>
         <div class="form-group">
           <label class="form-label">Harga Jual (Rp) <span class="text-danger">*</span></label>
-          <input type="number" id="menuPrice" class="form-input" placeholder="15000" min="0">
+          <input type="text" inputmode="numeric" data-money id="menuPrice" class="form-input" placeholder="15.000">
         </div>
       </div>
       <div class="form-group">
@@ -618,10 +618,15 @@ async function showAddMenuModal(categoryId) {
         Utils.showToast("Terjadi kesalahan", 'error');
         return;
       }
-      const price = parseInt(priceInput.value);
-      const costPrice = Math.max(0, parseInt(document.getElementById('menuCostPrice')?.value) || 0);
-      if (isNaN(price) || price <= 0) {
+      const price = Utils.parseMoney(priceInput.value);
+      const costPrice = Utils.parseMoney(document.getElementById('menuCostPrice')?.value);
+      if (price <= 0) {
         Utils.showToast("Harga harus diisi dengan angka yang valid!", 'error');
+        priceInput.focus();
+        return;
+      }
+      if (price < costPrice) {
+        Utils.showToast("Harga jual tidak boleh lebih kecil dari harga modal!", 'error');
         priceInput.focus();
         return;
       }
@@ -724,12 +729,12 @@ async function editMenu(id) {
         <div class="form-grid-2">
           <div class="form-group">
             <label class="form-label">Harga Modal (Rp)</label>
-            <input type="number" id="editCostPrice" class="form-input" value="${menu.costPrice || menu.hargaModal || 0}" min="0">
+            <input type="text" inputmode="numeric" data-money id="editCostPrice" class="form-input" value="${Utils.formatRupiah(menu.costPrice || menu.hargaModal || 0)}">
             <small class="text-muted">Untuk HPP & laba kotor.</small>
           </div>
           <div class="form-group">
             <label class="form-label">Harga Jual (Rp)</label>
-            <input type="number" id="editPrice" class="form-input" value="${menu.salePrice ?? menu.price ?? 0}" min="0">
+            <input type="text" inputmode="numeric" data-money id="editPrice" class="form-input" value="${Utils.formatRupiah(menu.salePrice ?? menu.price ?? 0)}">
           </div>
         </div>
         <div class="form-group">
@@ -892,9 +897,9 @@ window.saveEditMenu = async function(id) {
     return;
   }
   const name = nameInput.value.trim();
-  const price = parseInt(priceInput.value);
+  const price = Utils.parseMoney(priceInput.value);
   const categoryId = categoryInput?.value || '';
-  const costPrice = Math.max(0, parseInt(document.getElementById('editCostPrice')?.value) || 0);
+  const costPrice = Utils.parseMoney(document.getElementById('editCostPrice')?.value);
   const useStock = useStockInput ? useStockInput.checked : false;
   const stock = useStock && stockInput ? parseInt(stockInput.value) || 0 : 0;
   if (!name) {
@@ -904,6 +909,11 @@ window.saveEditMenu = async function(id) {
   }
   if (!price || price <= 0) {
     Utils.showToast("Harga harus diisi dengan valid", 'error');
+    priceInput.focus();
+    return;
+  }
+  if (price < costPrice) {
+    Utils.showToast("Harga jual tidak boleh lebih kecil dari harga modal", 'error');
     priceInput.focus();
     return;
   }

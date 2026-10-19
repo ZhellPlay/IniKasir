@@ -33,7 +33,7 @@ function bukaModalPengeluaran() {
           <input type="text" id="inputNamaPengeluaran" class="form-input pengeluaran-input-nama"
                  placeholder="Nama pengeluaran..."
                  onkeydown="if(event.key==='Enter')document.getElementById('inputNominalPengeluaran').focus()">
-          <input type="number" id="inputNominalPengeluaran" class="form-input pengeluaran-input-nominal"
+          <input type="text" inputmode="numeric" data-money id="inputNominalPengeluaran" class="form-input pengeluaran-input-nominal"
                  placeholder="Harga..."
                  onkeydown="if(event.key==='Enter'){const b=document.getElementById('btnTambahPengeluaran');Utils.setButtonLoading(b,true);tambahPengeluaran().finally(()=>Utils.setButtonLoading(b,false))}">
           <button id="btnTambahPengeluaran" class="btn btn-primary"
@@ -133,11 +133,10 @@ function tutupModalPengeluaran() {
 async function tambahPengeluaran() {
   if (!state.currentSession) return;
   const nama = document.getElementById('inputNamaPengeluaran')?.value?.trim();
-  const nominalRaw = document.getElementById('inputNominalPengeluaran')?.value;
-  const nominal = parseFloat(nominalRaw);
+  const nominal = Utils.parseMoney(document.getElementById('inputNominalPengeluaran')?.value);
 
   if (!nama) { Utils.showToast('Nama pengeluaran harus diisi', 'warning'); return; }
-  if (!nominalRaw || isNaN(nominal) || nominal <= 0) {
+  if (nominal <= 0) {
     Utils.showToast('Nominal harus lebih dari 0', 'warning'); return;
   }
   try {
@@ -165,7 +164,7 @@ function mulaiEditPengeluaran(id, namaLama, nominalLama) {
   item.innerHTML = `
       <div class="pengeluaran-edit-row">
         <input type="text" id="editNama_${id}" class="form-input pengeluaran-edit-input-nama" value="${Utils.escapeHtml(namaLama)}">
-        <input type="number" id="editNominal_${id}" class="form-input pengeluaran-edit-input-nominal" value="${nominalLama}"
+        <input type="text" inputmode="numeric" data-money id="editNominal_${id}" class="form-input pengeluaran-edit-input-nominal" value="${Utils.formatRupiah(nominalLama)}"
                onkeydown="if(event.key==='Enter'){const b=this.nextElementSibling;Utils.setButtonLoading(b,true);simpanEditPengeluaran('${id}').finally(()=>Utils.setButtonLoading(b,false))}">
         <button class="btn btn-primary pengeluaran-edit-btn-save"
                 onclick="const b=this;Utils.setButtonLoading(b,true);simpanEditPengeluaran('${id}').finally(()=>Utils.setButtonLoading(b,false))">
@@ -181,15 +180,24 @@ function mulaiEditPengeluaran(id, namaLama, nominalLama) {
 
 async function simpanEditPengeluaran(id) {
   const nama = document.getElementById(`editNama_${id}`)?.value?.trim();
-  const nominalRaw = document.getElementById(`editNominal_${id}`)?.value;
-  const nominal = parseFloat(nominalRaw);
+  const nominal = Utils.parseMoney(document.getElementById(`editNominal_${id}`)?.value);
 
   if (!nama) { Utils.showToast('Nama harus diisi', 'warning'); return; }
-  if (!nominalRaw || isNaN(nominal) || nominal <= 0) {
+  if (nominal <= 0) {
     Utils.showToast('Nominal harus lebih dari 0', 'warning'); return;
+  }
+  const current = state.pengeluaran?.find(item => item.id === id);
+  if (current && current.nama === nama && Number(current.nominal) === nominal) {
+    refreshListPengeluaran();
+    return;
   }
   try {
     await dbCloud.collection('pengeluaran').doc(id).update({ nama, nominal });
+    if (current) {
+      current.nama = nama;
+      current.nominal = nominal;
+    }
+    refreshListPengeluaran();
     Utils.showToast('Pengeluaran diperbarui', 'success');
   } catch (error) {
     Utils.showToast(Utils.getFriendlyError(error), 'error');

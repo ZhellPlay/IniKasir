@@ -208,14 +208,14 @@ function _optionRowHtml(idx, opt = {}) {
           <label class="modifier-price-label">Harga Modal</label>
           <div class="input-currency-wrapper">
             <span class="input-currency-prefix">Rp</span>
-            <input type="number" class="form-input opt-cost-price input-with-currency" placeholder="0" value="${opt.costPrice === undefined ? '' : opt.costPrice}" min="0">
+            <input type="text" inputmode="numeric" data-money class="form-input opt-cost-price input-with-currency" placeholder="0" value="${opt.costPrice === undefined ? '' : Utils.formatRupiah(opt.costPrice)}">
           </div>
         </div>
         <div class="modifier-price-field">
           <label class="modifier-price-label">Harga Jual</label>
           <div class="input-currency-wrapper">
             <span class="input-currency-prefix">Rp</span>
-            <input type="number" class="form-input opt-price input-with-currency" placeholder="0" value="${opt.price === undefined ? '' : opt.price}" min="0">
+            <input type="text" inputmode="numeric" data-money class="form-input opt-price input-with-currency" placeholder="0" value="${opt.price === undefined ? '' : Utils.formatRupiah(opt.price)}">
           </div>
         </div>
         <label class="modifier-default-label">
@@ -258,14 +258,18 @@ function _collectOptions(containerSelector) {
   const options = [];
   rows.forEach((row) => {
     const name = row.querySelector('.opt-name')?.value?.trim();
-    const price = parseInt(row.querySelector('.opt-price')?.value) || 0;
-    const costPrice = parseInt(row.querySelector('.opt-cost-price')?.value) || 0;
+    const price = Utils.parseMoney(row.querySelector('.opt-price')?.value);
+    const costPrice = Utils.parseMoney(row.querySelector('.opt-cost-price')?.value);
     const isDefault = row.querySelector('.opt-default')?.checked || false;
     const id = row.dataset.id || _genId();
     const resep = _collectResepFromRow(row);
     if (name) options.push({ id, name, price, costPrice, isDefault, resep });
   });
   return options;
+}
+
+function _optionBelowCost(options) {
+  return options.find(opt => opt.price < opt.costPrice);
 }
 
 function _genId() {
@@ -404,6 +408,8 @@ async function saveNewModifierGroup() {
   const maxSelect = parseInt(document.getElementById('mgMax')?.value) || 1;
   const options = _collectOptions('#mg-opts');
   if (options.length === 0) { Utils.showToast('Tambahkan minimal 1 opsi', 'warning'); return; }
+  const belowCost = _optionBelowCost(options);
+  if (belowCost) { Utils.showToast(`Harga jual "${belowCost.name}" tidak boleh lebih kecil dari harga modal`, 'error'); return; }
   const linkedIds = [...document.querySelectorAll('.mg-menu-check:checked')].map(c => c.value);
 
   const ref = await dbCloud.collection('modifierGroups').add({
@@ -476,6 +482,8 @@ async function saveEditModifierGroup(id) {
   const maxSelect = parseInt(document.getElementById('mgEditMax')?.value) || 1;
   const options = _collectOptions('#mg-edit-opts');
   if (options.length === 0) { Utils.showToast('Tambahkan minimal 1 opsi', 'warning'); return; }
+  const belowCost = _optionBelowCost(options);
+  if (belowCost) { Utils.showToast(`Harga jual "${belowCost.name}" tidak boleh lebih kecil dari harga modal`, 'error'); return; }
   const newLinked = [...document.querySelectorAll('.mg-edit-menu-check:checked')].map(c => c.value);
   const oldLinked = window._editModGroupOldLinked || [];
 

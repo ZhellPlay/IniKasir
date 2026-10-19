@@ -126,6 +126,36 @@ window.Utils = {
     return new Intl.NumberFormat("id-ID").format(num || 0);
   },
 
+  parseMoney: function(value) {
+    return Number(String(value ?? '').replace(/\D/g, '')) || 0;
+  },
+
+  isMoneyField: function(input) {
+    if (!input || !input.matches) return false;
+    if (input.matches('input[data-money]')) return true;
+    const ref = input.getAttribute('data-money-if');
+    if (!ref) return false;
+    const select = document.querySelector(ref);
+    return !!select && select.value === 'nominal';
+  },
+
+  formatMoneyInput: function(input) {
+    if (!Utils.isMoneyField(input)) return;
+    const raw = input.value;
+    const caret = input.selectionStart === null ? raw.length : input.selectionStart;
+    const digitsBefore = raw.slice(0, caret).replace(/\D/g, '').length;
+    const digits = raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    input.value = formatted;
+    let position = 0;
+    let seen = 0;
+    while (position < formatted.length && seen < digitsBefore) {
+      if (/\d/.test(formatted[position])) seen++;
+      position++;
+    }
+    if (input.setSelectionRange && document.activeElement === input) input.setSelectionRange(position, position);
+  },
+
   setButtonLoading: function(btn, loading) {
     if (!btn) return;
     if (loading) {
@@ -359,3 +389,17 @@ window.Utils = {
     return null;
   }
 };
+
+document.addEventListener('input', function(event) {
+  const target = event.target;
+  if (target && target.matches && target.matches('input[data-money], input[data-money-if]')) Utils.formatMoneyInput(target);
+});
+
+document.addEventListener('change', function(event) {
+  const select = event.target;
+  if (!select || !select.matches || !select.matches('select') || !select.id) return;
+  document.querySelectorAll('input[data-money-if="#' + select.id + '"]').forEach(function(input) {
+    if (Utils.isMoneyField(input)) Utils.formatMoneyInput(input);
+    else input.value = input.value.replace(/\./g, '');
+  });
+});

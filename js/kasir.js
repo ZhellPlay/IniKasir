@@ -266,8 +266,10 @@ function renderDiscountBox() {
           <option value="percent" ${state.discountMode === 'percent' ? 'selected' : ''}>Persen (%)</option>
           <option value="nominal" ${state.discountMode === 'nominal' ? 'selected' : ''}>Nominal (Rp)</option>
         </select>
-        <input type="number" min="0" ${state.discountMode === 'percent' ? 'max="100" step="0.01"' : ''} class="form-input discount-value-input" value="${window._discountDraftValue ?? state.discountValue ?? 0}" placeholder="0" oninput="window._discountDraftValue=this.value" onkeydown="if(event.key==='Enter')applyDiscount(this.value)">
-        <button class="btn btn-secondary btn-sm" onclick="applyDiscount(document.querySelector('.discount-value-input')?.value)">Terapkan</button>
+        ${state.discountMode === 'percent'
+        ? `<input type="number" min="0" max="100" step="0.01" class="form-input discount-value-input" value="${window._discountDraftValue ?? state.discountValue ?? 0}" placeholder="0" oninput="window._discountDraftValue=this.value" onkeydown="if(event.key==='Enter')applyDiscount(this.value)">`
+        : `<input type="text" inputmode="numeric" data-money class="form-input discount-value-input" value="${Utils.formatRupiah(Number(window._discountDraftValue ?? state.discountValue ?? 0))}" placeholder="0" oninput="window._discountDraftValue=Utils.parseMoney(this.value)" onkeydown="if(event.key==='Enter')applyDiscount(Utils.parseMoney(this.value))">`}
+        <button class="btn btn-secondary btn-sm" onclick="applyDiscount(window.readDiscountInput())">Terapkan</button>
       </div>` : ''}
     ${getDiscountAmount() > 0 ? `<div class="discount-applied">- Rp ${Utils.formatRupiah(getDiscountAmount())}${source === 'auto' ? ' · Otomatis' : ' · Manual'}</div>` : ''}
   </div>`;
@@ -484,6 +486,11 @@ window.selectDiscountTemplate = function(id) {
   renderKasir();
 };
 
+window.readDiscountInput = function() {
+  const input = document.querySelector('.discount-value-input');
+  return state.discountMode === 'nominal' ? Utils.parseMoney(input?.value) : input?.value;
+};
+
 window.applyDiscount = function(value) {
   let v = Number(value);
   if (!Number.isFinite(v) || v < 0) v = 0;
@@ -601,9 +608,6 @@ async function _showModifierModal(item, modGroups) {
       <div class="modal modal-wide">
         <div class="modal-header">
           <h3><i class="fas fa-sliders-h"></i> Pilihan untuk ${Utils.escapeHtml(item.name)}</h3>
-          <button class="btn-icon-sm" onclick="document.getElementById('modifier-select-modal').remove()">
-            <i class="fas fa-times"></i>
-          </button>
         </div>
         <div class="modal-body stack-y" id="modifier-modal-body">
           ${buildContent()}
@@ -1182,7 +1186,7 @@ function renderModalPaymentContent() {
       <div>
         <label class="form-label">Nominal Cash</label>
         <input type="text" id="cash-input" class="form-input" placeholder="Masukkan nominal"
-               oninput="handleCashInput(this.value)" autocomplete="off"
+               oninput="handleCashInput(this.value)" autocomplete="off" inputmode="numeric" data-money
                value="${state.cashAmount ? Utils.formatRupiah(state.cashAmount) : ''}">
         <div class="quick-buttons">
           <button class="btn btn-secondary" onclick="quickCash(50000)">50K</button>
@@ -1211,7 +1215,7 @@ function renderModalPaymentContent() {
         <label class="form-label">Cash</label>
         <div class="mixed-input-flex">
           <input type="text" id="mixed-cash-input" class="form-input" placeholder="Nominal"
-                 oninput="handleMixedCashInput(this.value)" autocomplete="off"
+                 oninput="handleMixedCashInput(this.value)" autocomplete="off" inputmode="numeric" data-money
                  value="${state.cashAmount ? Utils.formatRupiah(state.cashAmount) : ''}">
           <button class="btn btn-secondary" onclick="quickCash(50000)">50K</button>
           <button class="btn btn-secondary" onclick="quickCash(100000)">100K</button>
@@ -1221,7 +1225,7 @@ function renderModalPaymentContent() {
         <label class="form-label">QRIS</label>
         <div class="mixed-input-flex">
           <input type="text" id="mixed-qris-input" class="form-input" placeholder="Nominal"
-                 oninput="handleMixedQrisInput(this.value)" autocomplete="off"
+                 oninput="handleMixedQrisInput(this.value)" autocomplete="off" inputmode="numeric" data-money
                  value="${state.qrisAmount ? Utils.formatRupiah(state.qrisAmount) : ''}">
           <button class="btn btn-secondary" onclick="quickQris(50000)">50K</button>
           <button class="btn btn-secondary" onclick="quickQris(100000)">100K</button>

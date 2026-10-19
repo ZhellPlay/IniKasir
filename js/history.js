@@ -526,15 +526,15 @@ function showEditPaymentModal(trxId) {
 
       <div id="edit-cash-input" class="form-group ${trx.metodeBayar === 'qris' ? 'is-hidden' : ''}">
         <label class="form-label">Nominal Tunai (CASH)</label>
-        <input type="number" id="edit-cash-amount" class="form-input" placeholder="0"
+        <input type="text" inputmode="numeric" data-money id="edit-cash-amount" class="form-input" placeholder="0"
                oninput="handleEditMixedCalc(this.value, 'cash', ${trx.total})"
-               value="${trx.metodeBayar === 'tunai' ? trx.paid : (trx.cashAmount || 0)}">
+               value="${Utils.formatRupiah(trx.metodeBayar === 'tunai' ? trx.paid : (trx.cashAmount || 0))}">
       </div>
       <div id="edit-qris-input" class="form-group ${trx.metodeBayar === 'mixed' ? '' : 'is-hidden'}">
         <label class="form-label">Nominal QRIS</label>
-        <input type="number" id="edit-qris-amount" class="form-input" placeholder="0"
+        <input type="text" inputmode="numeric" data-money id="edit-qris-amount" class="form-input" placeholder="0"
                oninput="handleEditMixedCalc(this.value, 'qris', ${trx.total})"
-               value="${trx.metodeBayar === 'mixed' ? (trx.qrisAmount || 0) : ''}">
+               value="${trx.metodeBayar === 'mixed' ? Utils.formatRupiah(trx.qrisAmount || 0) : ''}">
       </div>
     `;
 
@@ -589,7 +589,7 @@ window.selectEditMethod = function(btn, method) {
 };
 
 window.setEditCash = function(amount) {
-  document.getElementById('edit-cash-amount').value = amount;
+  document.getElementById('edit-cash-amount').value = Utils.formatRupiah(amount);
 };
 
 window.handleEditMixedCalc = function(value, source, total) {
@@ -599,13 +599,13 @@ window.handleEditMixedCalc = function(value, source, total) {
   const cashInput = document.getElementById('edit-cash-amount');
   const qrisInput = document.getElementById('edit-qris-amount');
 
-  let val = parseInt(value) || 0;
+  let val = Utils.parseMoney(value);
   if (val > total) val = total;
 
   if (source === 'cash') {
-    qrisInput.value = total - val;
+    qrisInput.value = Utils.formatRupiah(total - val);
   } else {
-    cashInput.value = total - val;
+    cashInput.value = Utils.formatRupiah(total - val);
   }
 };
 
@@ -620,7 +620,7 @@ async function saveEditPayment(trxId, btnRef) {
   let cashAmount = 0, qrisAmount = 0, paid = 0;
 
   if (method === 'tunai') {
-    cashAmount = parseInt(document.getElementById('edit-cash-amount').value || 0);
+    cashAmount = Utils.parseMoney(document.getElementById('edit-cash-amount').value);
     paid = cashAmount;
     if (cashAmount < total) { Utils.showToast("Uang cash kurang dari total!", 'error'); return; }
     if (cashAmount > total) { Utils.showToast("Uang cash tidak boleh lebih/kurang", 'error'); return; }
@@ -628,8 +628,8 @@ async function saveEditPayment(trxId, btnRef) {
     qrisAmount = total;
     paid = total;
   } else {
-    cashAmount = parseInt(document.getElementById('edit-cash-amount').value || 0);
-    qrisAmount = parseInt(document.getElementById('edit-qris-amount').value || 0);
+    cashAmount = Utils.parseMoney(document.getElementById('edit-cash-amount').value);
+    qrisAmount = Utils.parseMoney(document.getElementById('edit-qris-amount').value);
     paid = cashAmount + qrisAmount;
 
     if (cashAmount >= total || qrisAmount >= total) {

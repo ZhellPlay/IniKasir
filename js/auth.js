@@ -201,11 +201,10 @@ async function bukaShift() {
                 <div class="auth-kasir-container">${kasirHtml}</div>
             </div>` : ''}
             <div class="text-left">
-                <label class="form-label">Uang Modal Awal <span class="text-muted">(opsional)</span></label>
+                <label class="form-label">Uang Modal Awal PerShift <span class="text-muted">(opsional)</span></label>
                 <input id="modalAwalInput" type="text" class="form-input" inputmode="numeric" autocomplete="off"
-                       placeholder="Contoh: 100.000"
-                       oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value) this.value=Number(this.value).toLocaleString('id-ID');">
-                <small class="text-muted">Masukkan uang yang sudah ada di laci kas sebelum shift dimulai.</small>
+                       placeholder="Contoh: 100.000" data-money>
+                <small class="text-muted">Masukkan uang cash modal (kalau ada) sebelum shift dimulai.</small>
             </div>
         `,
     buttons: [

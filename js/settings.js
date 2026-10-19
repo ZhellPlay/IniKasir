@@ -302,12 +302,12 @@ function renderSettingsTab() {
 
         <div class="discount-template-form">
           <input id="discountTemplateName" class="form-input" placeholder="Nama template">
-          <input id="discountTemplateMin" class="form-input" type="number" min="0" placeholder="Minimal belanja">
+          <input id="discountTemplateMin" class="form-input" type="text" inputmode="numeric" data-money placeholder="Minimal belanja">
           <select id="discountTemplateType" class="form-input">
             <option value="percent">Persen (%)</option>
             <option value="nominal">Nominal (Rp)</option>
           </select>
-          <input id="discountTemplateValue" class="form-input" type="number" min="0" placeholder="Nilai diskon">
+          <input id="discountTemplateValue" class="form-input" type="text" inputmode="decimal" data-money-if="#discountTemplateType" placeholder="Nilai diskon">
           <button class="btn btn-secondary" onclick="const b=this;Utils.setButtonLoading(b,true);tambahTemplateDiskon().finally(()=>Utils.setButtonLoading(b,false))">
             <i class="fas fa-plus"></i> Tambah
           </button>
@@ -587,9 +587,10 @@ async function _saveDiscountTemplates(templates) {
 
 async function tambahTemplateDiskon() {
   const nama = (document.getElementById('discountTemplateName')?.value || '').trim() || 'Template Diskon';
-  const minBelanja = Math.max(0, Number(document.getElementById('discountTemplateMin')?.value || 0));
+  const minBelanja = Utils.parseMoney(document.getElementById('discountTemplateMin')?.value);
   const tipe = document.getElementById('discountTemplateType')?.value === 'nominal' ? 'nominal' : 'percent';
-  let nilai = Math.max(0, Number(document.getElementById('discountTemplateValue')?.value || 0));
+  const nilaiRaw = document.getElementById('discountTemplateValue')?.value;
+  let nilai = tipe === 'nominal' ? Utils.parseMoney(nilaiRaw) : Math.max(0, Number(String(nilaiRaw || '0').replace(',', '.')) || 0);
   if (tipe === 'percent') nilai = Math.min(nilai, 100);
   if (nilai <= 0) { Utils.showToast('Nilai diskon harus lebih dari 0', 'warning'); return; }
   const templates = [...(state.settings?.fitur?.diskonPengaturan?.templates || []), { id: 'dt_' + Date.now(), nama, minBelanja, tipe, nilai, aktif: true }];
@@ -613,7 +614,7 @@ async function editTemplateDiskon(index) {
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Minimal belanja</label>
-          <input id="editDiscountTemplateMin" class="form-input" type="number" min="0" value="${Number(template.minBelanja || 0)}">
+          <input id="editDiscountTemplateMin" class="form-input" type="text" inputmode="numeric" data-money value="${Utils.formatRupiah(Number(template.minBelanja || 0))}">
         </div>
         <div class="form-group">
           <label class="form-label">Tipe</label>
@@ -625,7 +626,7 @@ async function editTemplateDiskon(index) {
       </div>
       <div class="form-group">
         <label class="form-label">Nilai diskon</label>
-        <input id="editDiscountTemplateValue" class="form-input" type="number" min="0" value="${Number(template.nilai || 0)}">
+        <input id="editDiscountTemplateValue" class="form-input" type="text" inputmode="decimal" data-money-if="#editDiscountTemplateType" value="${template.tipe === 'nominal' ? Utils.formatRupiah(Number(template.nilai || 0)) : Number(template.nilai || 0)}">
       </div>`,
     buttons: [
       { text: 'Batal', action: 'cancel', class: 'btn-secondary' },
@@ -633,9 +634,11 @@ async function editTemplateDiskon(index) {
         text: 'Simpan', action: 'save', class: 'btn-primary', onClick: () => {
           window._editDiscountTemplate = {
             nama: (document.getElementById('editDiscountTemplateName')?.value || '').trim(),
-            minBelanja: Math.max(0, Number(document.getElementById('editDiscountTemplateMin')?.value || 0)),
+            minBelanja: Utils.parseMoney(document.getElementById('editDiscountTemplateMin')?.value),
             tipe: document.getElementById('editDiscountTemplateType')?.value === 'nominal' ? 'nominal' : 'percent',
-            nilai: Math.max(0, Number(document.getElementById('editDiscountTemplateValue')?.value || 0))
+            nilai: document.getElementById('editDiscountTemplateType')?.value === 'nominal'
+              ? Utils.parseMoney(document.getElementById('editDiscountTemplateValue')?.value)
+              : Math.max(0, Number(String(document.getElementById('editDiscountTemplateValue')?.value || '0').replace(',', '.')) || 0)
           };
         }
       }
@@ -702,9 +705,6 @@ async function importFromExcel() {
       return;
     }
 
-    const confirm = await Utils.showConfirm('Import akan mengganti data menu & bahan. Resep menu dan resep varian/tambahan akan dikosongkan. Kategori yang dipakai akan dibuat jika belum ada. Lanjutkan?');
-    if (!confirm) return;
-
     const toBool = value => {
       const normalized = String(value ?? '').trim().toLowerCase();
       return ['true', '1', 'ya', 'yes', 'on'].includes(normalized);
@@ -715,6 +715,15 @@ async function importFromExcel() {
       const n = Number(text.replace(/\.(?=.*\.)/g, '').replace(',', '.'));
       return Number.isFinite(n) ? n : fallback;
     };
+
+    const belowCostRow = menus.find(m => numberValue(m['Harga Jual'] ?? m['Harga']) < numberValue(m['Harga Modal']));
+    if (belowCostRow) {
+      Utils.showToast(`Harga jual "${String(belowCostRow['Nama Menu'] || '').trim()}" lebih kecil dari harga modal`, 'error');
+      return;
+    }
+
+    const confirm = await Utils.showConfirm('Import akan mengganti data menu & bahan. Resep menu dan resep varian/tambahan akan dikosongkan. Kategori yang dipakai akan dibuat jika belum ada. Lanjutkan?');
+    if (!confirm) return;
 
     const existingCategories = await dbCloud.collection('categories').get();
     const categoryMap = new Map();

@@ -458,9 +458,7 @@ window._viewOpenBillDetail = function(obId) {
     <div class="modal open-bill-detail-modal">
       <div class="modal-header">
         <h3><i class="fas fa-list"></i> Detail Pesanan ${ob.mejaNomor ? 'Meja ' + ob.mejaNomor : ob.mejaNama || 'Pesanan'}</h3>
-        <button class="btn-icon-sm" onclick="document.getElementById('modal-ob-detail').remove()">
-          <i class="fas fa-times"></i>
-        </button>
+        <button class="btn btn-secondary btn-modal-close" onclick="document.getElementById('modal-ob-detail').remove()">Tutup</button>
       </div>
       <div class="modal-body">
         ${itemsHtml}
@@ -478,9 +476,6 @@ window._viewOpenBillDetail = function(obId) {
           <div class="open-bill-total-label">Total Tagihan</div>
           <div class="open-bill-total-amount">Rp ${Utils.formatRupiah(Math.max(0, detailSubtotal - Number(ob.discountAmount || 0)))}</div>
         </div>
-      </div>
-      <div class="modal-footer-inline">
-        <button class="btn btn-secondary" onclick="document.getElementById('modal-ob-detail').remove()">Tutup</button>
       </div>
     </div>
   `;
