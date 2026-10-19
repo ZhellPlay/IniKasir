@@ -1385,7 +1385,6 @@
   text-align: center;
   padding: 40px 20px;
   color: var(--text-muted);
-  opacity: 0.85;
 }
 
 .empty-state i {
@@ -8464,5 +8463,132 @@ html.dark .btn-warning {
 html.dark .td-base.text-primary,
 html.dark td.text-primary,
 html.dark .fw-bold.text-primary {
+  color: #34d9a8 !important;
+}
+
+#print-dialog .modal-footer-inline {
+  margin-top: 16px;
+  padding: 0;
+  border-top: 0;
+}
+
+#print-dialog .modal-footer-inline .btn {
+  width: 100%;
+}
+
+.open-bill-detail-modal .modal-header .btn-modal-close {
+  flex: 0 0 auto;
+}
+
+.pengeluaran-edit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 44px;
+  gap: 8px;
+  align-items: center;
+}
+
+.pengeluaran-edit-input-nama {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.pengeluaran-edit-input-nominal {
+  min-width: 0;
+}
+
+.pengeluaran-edit-btn-save,
+.pengeluaran-edit-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+
+#cat-actions-container .btn {
+  justify-content: center;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  #cat-actions-container {
+    display: grid !important;
+    grid-template-columns: 1.3fr 1fr 1fr;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+
+  #cat-actions-container .btn {
+    width: 100%;
+    min-width: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pengeluaran-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .pengeluaran-input-nama,
+  .pengeluaran-input-nominal {
+    min-width: 0;
+  }
+
+  .pengeluaran-input-row .btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
+.payment-option.active {
+  background: linear-gradient(135deg, #0b8466, #0a7a5f);
+  border-color: #0b8466;
+}
+
+.dark .payment-option.active {
+  background: linear-gradient(135deg, #0b8466, #096c54);
+  border-color: #0b8466;
+}
+
+.payment-option.active i,
+.payment-option.active span,
+.dark .payment-option.active i,
+.dark .payment-option.active span {
+  color: #ffffff;
+}
+
+html .text-danger,
+html .recipe-remove {
+  color: #c53030 !important;
+}
+
+html.dark .text-danger,
+html.dark .recipe-remove {
+  color: #f87171 !important;
+}
+
+html .change-info.warning {
+  color: #b45309;
+}
+
+html .table-name {
+  color: #08684f;
+}
+
+html .status-toggle-btn.btn-danger,
+html .settings-record-actions .status-toggle-btn.btn-danger,
+html .discount-template-actions .status-toggle-btn.btn-danger {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+html.dark :is(.open-bill-item-total, .open-bill-total-amount, .modifier-opt-price, .payment-summary .total span:last-child, .text-primary.text-bold-md) {
   color: #34d9a8 !important;
 }
